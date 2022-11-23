@@ -863,46 +863,6 @@ points on the color video stream.</string>
                        </rect>
                       </property>
                      </widget>
-                     <widget class="QLabel" name="label_6">
-                      <property name="geometry">
-                       <rect>
-                        <x>20</x>
-                        <y>80</y>
-                        <width>67</width>
-                        <height>17</height>
-                       </rect>
-                      </property>
-                      <property name="font">
-                       <font>
-                        <pointsize>13</pointsize>
-                        <weight>75</weight>
-                        <bold>true</bold>
-                       </font>
-                      </property>
-                      <property name="text">
-                       <string>Point 1: </string>
-                      </property>
-                     </widget>
-                     <widget class="QLabel" name="label_7">
-                      <property name="geometry">
-                       <rect>
-                        <x>20</x>
-                        <y>120</y>
-                        <width>67</width>
-                        <height>17</height>
-                       </rect>
-                      </property>
-                      <property name="font">
-                       <font>
-                        <pointsize>13</pointsize>
-                        <weight>75</weight>
-                        <bold>true</bold>
-                       </font>
-                      </property>
-                      <property name="text">
-                       <string>Point 2: </string>
-                      </property>
-                     </widget>
                      <widget class="QLabel" name="label_8">
                       <property name="geometry">
                        <rect>
@@ -1010,7 +970,7 @@ points on the color video stream.</string>
                        </font>
                       </property>
                       <property name="text">
-                       <string>3.141</string>
+                       <string/>
                       </property>
                      </widget>
                      <widget class="QPushButton" name="CalculateLineDistance">
@@ -1047,6 +1007,46 @@ points on the color video stream.</string>
                       </property>
                       <property name="text">
                        <string>Clear</string>
+                      </property>
+                     </widget>
+                     <widget class="QPushButton" name="LinePoint1">
+                      <property name="geometry">
+                       <rect>
+                        <x>10</x>
+                        <y>70</y>
+                        <width>89</width>
+                        <height>31</height>
+                       </rect>
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>13</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>Point 1:</string>
+                      </property>
+                     </widget>
+                     <widget class="QPushButton" name="LinePoint2">
+                      <property name="geometry">
+                       <rect>
+                        <x>10</x>
+                        <y>110</y>
+                        <width>89</width>
+                        <height>31</height>
+                       </rect>
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>13</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>Point 2:</string>
                       </property>
                      </widget>
                     </widget>

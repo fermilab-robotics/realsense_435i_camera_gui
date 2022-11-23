@@ -9,6 +9,7 @@
 #The depth_frame.getDistance(x,y) has been checked to be fairly accurate on center (320, 240). (within 2 inches)
 #The single point distance menu is now fully working, although points aside from the center may not be accurate.
 # You can click on a point in either color or depth video feeds to get the coordinates for distance calculations.  
+# The line distance menu is almost complete. You can click on two points and get the distance between them. 
 
 
 #Issues:
@@ -17,10 +18,16 @@
 #If you exit out of the GUI without stopping the video streams first you cause a segmentation fault. I need to fix that..
 #This main file should definitely get broken up into a few smaller files
 
+#Thoughts
+# Right now you have to hit clear for the line distance before you can reset either of the points. It would be nice to be 
+# able to just click to redo, but also I'm not sure how to do that...
+
 #TODO
-#Figure out how to get X,Y value pairs for line distance from mouse click, also how to show clicked point on video feeds. 
-#Make calculation for multiple points
+#I need to do more testing on the distance between two points. I think if you mark it on the depth video where you can make sure 
+#  the depth feed is actually seeing it it's actually almost dead on. Within 2cm, and that's with me trying to be conservative on clicking. 
+#You can't currently type in points and have it work for the line distance. (Or if you can it's weird, I forgot to check)
 #Make function for drawing a line between two points. 
+#Add in the ability to reload a picture and take measurements. (This will mean reworking the picture taking algorithm, I think)
 
 from contextlib import nullcontext
 from tkinter import Frame
@@ -28,6 +35,7 @@ from PyQt5 import QtGui
 from PyQt5.QtGui import QPixmap, QIcon
 import sys
 import cv2
+import math
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QThread
 import numpy as np
 import pyrealsense2 as rs
@@ -39,6 +47,8 @@ from GUI import *
 
 #This class is what allows us to actually get a video stream from the camera
 class DepthCamera:
+    depth_scale = 0
+    color_intrin = []
     def __init__(self):
         # Configure depth and color streams
         self.pipeline = rs.pipeline()
@@ -49,6 +59,7 @@ class DepthCamera:
         pipeline_profile = config.resolve(pipeline_wrapper)
         device = pipeline_profile.get_device()
         device_product_line = str(device.get_info(rs.camera_info.product_line))
+        self.depth_scale = device.first_depth_sensor().get_depth_scale() #get the depth scale. Not sure if this is the right place to declare this or not. 
 
         config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
         config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
@@ -58,11 +69,16 @@ class DepthCamera:
 
     def get_frame(self):
         frames = self.pipeline.wait_for_frames()
+        
+        #This step is necessary so that the depth and video feeds are showing the same thing. Otherwise they are offset. 
+        #I'm combining from color to depth because depth to color compromises the color video feed dramatically. 
+        align = rs.align(rs.stream.color)
+        frames = align.process(frames)
+
         depth_frame = frames.get_depth_frame()
         color_frame = frames.get_color_frame()
-        #print(depth_frame)
 
-        depth = round(depth_frame.get_distance(320, 240),3)
+        self.color_intrin = color_frame.profile.as_video_stream_profile().intrinsics #This is another set value, at least for when we'll be using it. 
 
         depth_image = np.asanyarray(depth_frame.get_data())
         color_image = np.asanyarray(color_frame.get_data())
@@ -139,6 +155,11 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.CalculatePointDistance.clicked.connect(lambda state: self.calculatePointDepth())
         self.ClearPointDistance.clicked.connect(lambda state: self.clearPointDepth())
+
+        self.LinePoint1.clicked.connect(lambda state: self.enterLinePoint1())
+        self.LinePoint2.clicked.connect(lambda state: self.enterLinePoint2())
+        self.ClearLineDistance.clicked.connect(lambda state: self.clearLineDistance())
+        self.CalculateLineDistance.clicked.connect(lambda state: self.calculateLineDistance())
         
         #Get the coordinates from either color or depth video stream mouse clicks. 
         self.ColorVideo.mousePressEvent = self.getPosition 
@@ -293,11 +314,32 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         picName = "Depth Image " + dtstring + ".jpeg"
         cv2.imwrite("../../Desktop/" + picName, depth_image) #Home/Documents/Realsense 435i Project/
 
-    depth = 0.00 #Varable for point depth. 
+    #Bools for getting and displaying point depth
+    pointDepth = 0.00 #Varable for point depth. 
     gPointX = 0
     gPointY = 0
     showPoint = False #Show dot on depth video
     showPointDistance = False #Bool for updating PointDistance display
+
+    #Bools for getting and displaying line distances. 
+    showLinePoint1 = False
+    showLinePoint2 = False
+    linePoint1 = False
+    linePoint2 = False
+    lPointX1 = 0
+    lPointX2 = 0
+    lPointY1 = 0
+    lPointY2 = 0
+    lPointDepth1 = 0.00
+    lPointDepth2 = 0.00
+    lineDistance = 0.00
+    showLineDistance = False
+
+    def enterLinePoint1(self):
+        self.showLinePoint1 = True
+
+    def enterLinePoint2(self):
+        self.showLinePoint2 = True
 
     #Function to get the point coords entered by user & display depth. 
     def calculatePointDepth(self):
@@ -305,6 +347,26 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.gPointY = int(self.PointY.toPlainText())
         self.showPoint = True #Show the distance and circle on the depth video stream
         self.showPointDistance = True
+
+    #Function to get the 2 line point coords entered by user and display distance between them
+    def calculateLineDistance(self):
+        self.lPointX1 = int(self.LineX1.toPlainText())
+        self.lPointX2 = int(self.LineX2.toPlainText())
+        self.lPointY1 = int(self.LineY1.toPlainText())
+        self.lPointY2 = int(self.LineY2.toPlainText())
+        
+        test = VideoThread()
+        #depth_scale = test.dc.depth_scale #The depth scale is fixed at 0.001 plus a tiny bit for the 400 series camera. 
+        color_intrin = test.dc.color_intrin
+        Z1 = rs.rs2_deproject_pixel_to_point(color_intrin, [self.lPointX1, self.lPointY1], self.lPointDepth1)
+        Z2 = rs.rs2_deproject_pixel_to_point(color_intrin, [self.lPointX2, self.lPointY2], self.lPointDepth2)
+
+        #print(Z1)
+        #result = rs.rs2_deproject_pixel_to_point()
+        #print ("depth_scale: " + str(depth_scale))
+        self.lineDistance = (math.sqrt(((Z1[0] - Z2[0])** 2) + ((Z1[1] - Z2[1]) ** 2) + ((Z1[2] - Z2[2]) ** 2)))
+        #print ("distance: " + str(self.lineDistance))
+        self.showLineDistance = True
 
     #Function to clear the point depth coords, point distance. 
     def clearPointDepth(self):
@@ -315,6 +377,22 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.PointDistance.clear()
         self.showPoint = False
 
+    #Function to clear the line distance coords, line distance.
+    def clearLineDistance(self):
+        self.lPointX1 = 0
+        self.lPointX2 = 0
+        self.lPointY1 = 0
+        self.lPointY2 = 0
+        self.LineX1.clear()
+        self.LineX2.clear()
+        self.LineY1.clear()
+        self.LineY2.clear()
+        self.LineDistance.clear()
+        self.showLinePoint1 = False
+        self.showLinePoint2 = False
+        self.linePoint1 = False
+        self.linePoint2 = False
+
     #Get the position on either video label where the mouse clicked. 
     def getPosition(self, event):
         x = event.pos().x()
@@ -322,6 +400,20 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         if (self.pointCoordinate):
             self.PointX.setPlainText(str(x))
             self.PointY.setPlainText(str(y))
+
+        if(self.LineDistance and self.showLinePoint1 and not self.linePoint1):
+            self.LineX1.setPlainText(str(x))
+            self.LineY1.setPlainText(str(y))
+            self.lPointX1 = x
+            self.lPointY1 = y
+            self.linePoint1 = True
+
+        if(self.LineDistance and self.showLinePoint2 and not self.linePoint2):
+            self.LineX2.setPlainText(str(x))
+            self.LineY2.setPlainText(str(y))
+            self.lPointX2 = x
+            self.lPointY2 = y
+            self.linePoint2 = True
         #print("X = " + str(x) + ", Y = " + str(y))
 
     #Connecting the actual Qt slots to the video feeds so they can be displayed
@@ -333,6 +425,17 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             point = (self.gPointX, self.gPointY)
             circleOneImg = cv2.circle(cv_img, point, 10, (0, 0, 0), -1) #Black circle with neon green border
             circleImg = cv2.circle(circleOneImg, point, 10, (57,255,20), 2)
+        
+        if(self.showLinePoint1 and self.linePoint1): #This will make it so that only one point is ever shown, not two points....
+            point = (self.lPointX1, self.lPointY1)
+            circleOneImg = cv2.circle(cv_img, point, 10, (0, 0, 0), -1) #Black circle with neon green border
+            circleImg = cv2.circle(circleOneImg, point, 10, (57,255,20), 2)
+
+        if(self.showLinePoint2 and self.linePoint2):
+            point = (self.lPointX2, self.lPointY2)
+            circleOneImg = cv2.circle(cv_img, point, 10, (0, 0, 0), -1) #Black circle with neon pink border
+            circleImg = cv2.circle(circleOneImg, point, 10, (251,72,196), 2)
+
         qt_img = self.convert_cv_qt(circleImg)
         self.ColorVideo.setPixmap(qt_img) #self.image_label.setPixmap(qt_img)
 
@@ -343,6 +446,17 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             point = (self.gPointX, self.gPointY)
             circleOneImg = cv2.circle(dv_img, point, 10, (0, 0, 0), -1) #Black circle with neon green border
             circleImg = cv2.circle(circleOneImg, point, 10, (57,255,20), 2)
+
+        if(self.showLinePoint1 and self.linePoint1): #This will make it so that only one point is ever shown, not two points....
+            point = (self.lPointX1, self.lPointY1)
+            circleOneImg = cv2.circle(dv_img, point, 10, (0, 0, 0), -1) #Black circle with neon green border
+            circleImg = cv2.circle(circleOneImg, point, 10, (57,255,20), 2)
+
+        if(self.showLinePoint2 and self.linePoint2):
+            point = (self.lPointX2, self.lPointY2)
+            circleOneImg = cv2.circle(dv_img, point, 10, (0, 0, 0), -1) #Black circle with neon pink border
+            circleImg = cv2.circle(circleOneImg, point, 10, (251,72,196), 2)
+
         qt_img = self.convert_cv_qt(circleImg)
         self.DepthVideo.setPixmap(qt_img) #self.image_label.setPixmap(qt_img)
     
@@ -359,10 +473,16 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
     #Slot dedicated to depth measurements given an incoming stream of depth images. 
     def update_Depth(self, depth_frame):
         #x, y = 320, 240
-        self.depth = depth_frame.get_distance(self.gPointX, self.gPointY)
+        self.pointDepth = depth_frame.get_distance(self.gPointX, self.gPointY)
+        self.lPointDepth1 = depth_frame.get_distance(self.lPointX1, self.lPointY1)
+        self.lPointDepth2 = depth_frame.get_distance(self.lPointX2, self.lPointY2)
         if (self.showPointDistance): #The bool allows the point distance to be set instantly and accurately. 
-            self.PointDistance.setText(str(round(self.depth, 5)))
+            self.PointDistance.setText(str(round(self.pointDepth, 5)))
             self.showPointDistance = False #If not reset, then can have a running display of the point distance. Maybe useful?
+
+        if (self.showLineDistance):
+            self.LineDistance.setText(str(round(self.lineDistance, 5)))
+            self.showLineDistance = False
         
         #depth = depth_frame[y,x] #object type not subscriptable. Sigh. 
         #print("distance: " + str(round(self.depth, 5)))
