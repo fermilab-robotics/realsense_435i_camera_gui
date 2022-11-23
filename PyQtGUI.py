@@ -7,7 +7,8 @@
 #Drop down menu options with icons that work to display things. (Yay!!!!) A bit jenky, but works, unless we 
 #   change any sizing ratios, then we are going to have some issues. 
 #The depth_frame.getDistance(x,y) has been checked to be fairly accurate on center (320, 240). (within 2 inches)
-#The single point distance menu is now fully working, although points aside from the center may not be accurate. 
+#The single point distance menu is now fully working, although points aside from the center may not be accurate.
+# You can click on a point in either color or depth video feeds to get the coordinates for distance calculations.  
 
 
 #Issues:
@@ -15,6 +16,11 @@
 #Right now some of this is static and not variable, for the sake of getting results. Should fix later though. 
 #If you exit out of the GUI without stopping the video streams first you cause a segmentation fault. I need to fix that..
 #This main file should definitely get broken up into a few smaller files
+
+#TODO
+#Figure out how to get X,Y value pairs for line distance from mouse click, also how to show clicked point on video feeds. 
+#Make calculation for multiple points
+#Make function for drawing a line between two points. 
 
 from contextlib import nullcontext
 from tkinter import Frame
@@ -133,6 +139,15 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.CalculatePointDistance.clicked.connect(lambda state: self.calculatePointDepth())
         self.ClearPointDistance.clicked.connect(lambda state: self.clearPointDepth())
+        
+        #Get the coordinates from either color or depth video stream mouse clicks. 
+        self.ColorVideo.mousePressEvent = self.getPosition 
+        self.DepthVideo.mousePressEvent = self.getPosition
+
+
+    #Bools to tell when to register clicks on the video streams for distance measurements. Flipped in expand functions.     
+    pointCoordinate = False
+    lineCoordinate = False
 
     #All the expand functions are for handling expanding/collapsing the menu for that particular function.
     #It's technically all static, which isn't the best, but the videos are static, so okay??
@@ -141,6 +156,7 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.ExpandPoint.setIcon(QIcon("Icons/ExpandArrow.png"))
             self.PointDistanceFrame.setMinimumSize(QtCore.QSize(603,44))
             self.PointDistanceFrame.setMaximumSize(QtCore.QSize(603,44))
+            self.pointCoordinate = False
 
         else:
             self.ExpandPoint.setIcon(QIcon("Icons/CollapseArrow.png"))
@@ -155,6 +171,7 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.MultiplePointsFrame.setMaximumSize(QtCore.QSize(603,44))
             self.RadiusFrame.setMinimumSize(QtCore.QSize(603,44))
             self.RadiusFrame.setMaximumSize(QtCore.QSize(603,44))
+            self.pointCoordinate = True
 
 
     def expandLineButton(self):
@@ -162,6 +179,7 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.ExpandLine.setIcon(QIcon("Icons/ExpandArrow.png"))
             self.LineDistanceFrame.setMinimumSize(QtCore.QSize(603,44))
             self.LineDistanceFrame.setMaximumSize(QtCore.QSize(603,44))
+            self.lineCoordinate = False
 
         else:
             self.ExpandLine.setIcon(QIcon("Icons/CollapseArrow.png"))
@@ -176,6 +194,7 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.MultiplePointsFrame.setMaximumSize(QtCore.QSize(603,44))
             self.RadiusFrame.setMinimumSize(QtCore.QSize(603,44))
             self.RadiusFrame.setMaximumSize(QtCore.QSize(603,44))
+            self.lineCoordinate = True
 
     def expandMultipleButton(self):
         if(self.MultiplePointsFrame.height() >= 255):
@@ -296,12 +315,25 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.PointDistance.clear()
         self.showPoint = False
 
+    #Get the position on either video label where the mouse clicked. 
+    def getPosition(self, event):
+        x = event.pos().x()
+        y = event.pos().y()
+        if (self.pointCoordinate):
+            self.PointX.setPlainText(str(x))
+            self.PointY.setPlainText(str(y))
+        #print("X = " + str(x) + ", Y = " + str(y))
 
     #Connecting the actual Qt slots to the video feeds so they can be displayed
     @pyqtSlot(np.ndarray) #This line can be optional 
     def update_color_image(self, cv_img):
         #Updates the image_label with a new opencv image
-        qt_img = self.convert_cv_qt(cv_img)
+        circleImg = cv_img
+        if(self.showPoint):
+            point = (self.gPointX, self.gPointY)
+            circleOneImg = cv2.circle(cv_img, point, 10, (0, 0, 0), -1) #Black circle with neon green border
+            circleImg = cv2.circle(circleOneImg, point, 10, (57,255,20), 2)
+        qt_img = self.convert_cv_qt(circleImg)
         self.ColorVideo.setPixmap(qt_img) #self.image_label.setPixmap(qt_img)
 
     def update_depth_image(self, dv_img):
@@ -309,7 +341,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         circleImg = dv_img
         if (self.showPoint): #Display the circle on the depth feed. 
             point = (self.gPointX, self.gPointY)
-            circleImg = cv2.circle(dv_img, point, 10, (57, 255, 20), -1)
+            circleOneImg = cv2.circle(dv_img, point, 10, (0, 0, 0), -1) #Black circle with neon green border
+            circleImg = cv2.circle(circleOneImg, point, 10, (57,255,20), 2)
         qt_img = self.convert_cv_qt(circleImg)
         self.DepthVideo.setPixmap(qt_img) #self.image_label.setPixmap(qt_img)
     

@@ -203,10 +203,11 @@ class Ui_MainWindow(object):
         self.PointFunctionFrame.setFrameShadow(QtWidgets.QFrame.Raised)
         self.PointFunctionFrame.setObjectName("PointFunctionFrame")
         self.label = QtWidgets.QLabel(self.PointFunctionFrame)
-        self.label.setGeometry(QtCore.QRect(10, 20, 581, 20))
+        self.label.setGeometry(QtCore.QRect(0, 10, 601, 41))
         font = QtGui.QFont()
         font.setPointSize(13)
         self.label.setFont(font)
+        self.label.setScaledContents(False)
         self.label.setAlignment(QtCore.Qt.AlignCenter)
         self.label.setObjectName("label")
         self.PointX = QtWidgets.QTextEdit(self.PointFunctionFrame)
@@ -577,7 +578,7 @@ class Ui_MainWindow(object):
         self.StopColorVideo.setText(_translate("MainWindow", "Stop"))
         self.SaveColorPic.setText(_translate("MainWindow", "Save Picture"))
         self.ExpandPoint.setText(_translate("MainWindow", "Single Point Distance"))
-        self.label.setText(_translate("MainWindow", "<html><head/><body><p>Enter (X,Y) coordinate and click calculate. The center point is (320, 240).</p></body></html>"))
+        self.label.setText(_translate("MainWindow", "<html><head/><body><p>Enter (X,Y) coordinate or click a point on the video feeds then click calculate.<br/>  The center point is (320, 240).</p></body></html>"))
         self.PointX.setPlaceholderText(_translate("MainWindow", "320"))
         self.PointY.setPlaceholderText(_translate("MainWindow", "240"))
         self.label_2.setText(_translate("MainWindow", "X:"))
@@ -609,7 +610,6 @@ class Ui_MainWindow(object):
         self.SaveDepthPic.setText(_translate("MainWindow", "SavePicture"))
         self.menuMain_Page_Remove.setTitle(_translate("MainWindow", "Main Page (Remove?)"))
         self.menuSub_Page_Remove.setTitle(_translate("MainWindow", "Sub-Page (Remove?)"))
-
 
 
 if __name__ == "__main__":

@@ -514,10 +514,10 @@ background-color: rgb(0, 0, 0);</string>
                      <widget class="QLabel" name="label">
                       <property name="geometry">
                        <rect>
-                        <x>10</x>
-                        <y>20</y>
-                        <width>581</width>
-                        <height>20</height>
+                        <x>0</x>
+                        <y>10</y>
+                        <width>601</width>
+                        <height>41</height>
                        </rect>
                       </property>
                       <property name="font">
@@ -526,7 +526,10 @@ background-color: rgb(0, 0, 0);</string>
                        </font>
                       </property>
                       <property name="text">
-                       <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Enter (X,Y) coordinate and click calculate. The center point is (320, 240).&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                       <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Enter (X,Y) coordinate or click a point on the video feeds then click calculate.&lt;br/&gt;  The center point is (320, 240).&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                      </property>
+                      <property name="scaledContents">
+                       <bool>false</bool>
                       </property>
                       <property name="alignment">
                        <set>Qt::AlignCenter</set>
