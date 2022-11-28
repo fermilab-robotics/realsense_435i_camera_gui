@@ -9,7 +9,9 @@
 #The depth_frame.getDistance(x,y) has been checked to be fairly accurate on center (320, 240). (within 2 inches)
 #The single point distance menu is now fully working, although points aside from the center may not be accurate.
 # You can click on a point in either color or depth video feeds to get the coordinates for distance calculations.  
-# The line distance menu is almost complete. You can click on two points and get the distance between them. 
+# The line distance menu is complete. You can click or type in points, edit them afterwards typed, draw line, and
+#  get the distance between the two points. I think the distance is decently accurate too, the depth feed isn't
+#  perfect and shadows can wreak havoc (Points in shadows become (null, null) which kills distance calculations.) 
 
 
 #Issues:
@@ -18,16 +20,12 @@
 #If you exit out of the GUI without stopping the video streams first you cause a segmentation fault. I need to fix that..
 #This main file should definitely get broken up into a few smaller files
 
-#Thoughts
-# Right now you have to hit clear for the line distance before you can reset either of the points. It would be nice to be 
-# able to just click to redo, but also I'm not sure how to do that...
-
 #TODO
 #I need to do more testing on the distance between two points. I think if you mark it on the depth video where you can make sure 
 #  the depth feed is actually seeing it it's actually almost dead on. Within 2cm, and that's with me trying to be conservative on clicking. 
-#You can't currently type in points and have it work for the line distance. (Or if you can it's weird, I forgot to check)
-#Make function for drawing a line between two points. 
 #Add in the ability to reload a picture and take measurements. (This will mean reworking the picture taking algorithm, I think)
+#Rework the video and depth feeds to have a single overlay instead of manually applying it both times. Will require reworking code
+# as well as reworking the GUI layout. (PyQt5 doesn't like overlays)
 
 from contextlib import nullcontext
 from tkinter import Frame
@@ -153,6 +151,7 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.ExpandMultiple.clicked.connect(lambda state: self.expandMultipleButton())
         self.ExpandRadius.clicked.connect(lambda state: self.expandRadiusButton())
 
+        self.PointSelect.clicked.connect(lambda state: self.enterPoint())
         self.CalculatePointDistance.clicked.connect(lambda state: self.calculatePointDepth())
         self.ClearPointDistance.clicked.connect(lambda state: self.clearPointDepth())
 
@@ -160,6 +159,7 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.LinePoint2.clicked.connect(lambda state: self.enterLinePoint2())
         self.ClearLineDistance.clicked.connect(lambda state: self.clearLineDistance())
         self.CalculateLineDistance.clicked.connect(lambda state: self.calculateLineDistance())
+        self.DrawLine.clicked.connect(lambda state: self.showLineFunction())
         
         #Get the coordinates from either color or depth video stream mouse clicks. 
         self.ColorVideo.mousePressEvent = self.getPosition 
@@ -178,6 +178,7 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.PointDistanceFrame.setMinimumSize(QtCore.QSize(603,44))
             self.PointDistanceFrame.setMaximumSize(QtCore.QSize(603,44))
             self.pointCoordinate = False
+            self.showPoint = False
 
         else:
             self.ExpandPoint.setIcon(QIcon("Icons/CollapseArrow.png"))
@@ -193,6 +194,9 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.RadiusFrame.setMinimumSize(QtCore.QSize(603,44))
             self.RadiusFrame.setMaximumSize(QtCore.QSize(603,44))
             self.pointCoordinate = True
+            self.lineCoordinate = False
+            self.showLinePoint1 = False
+            self.showLinePoint2 = False
 
 
     def expandLineButton(self):
@@ -201,6 +205,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.LineDistanceFrame.setMinimumSize(QtCore.QSize(603,44))
             self.LineDistanceFrame.setMaximumSize(QtCore.QSize(603,44))
             self.lineCoordinate = False
+            self.showLinePoint1 = False
+            self.showLinePoint2 = False
 
         else:
             self.ExpandLine.setIcon(QIcon("Icons/CollapseArrow.png"))
@@ -216,6 +222,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.RadiusFrame.setMinimumSize(QtCore.QSize(603,44))
             self.RadiusFrame.setMaximumSize(QtCore.QSize(603,44))
             self.lineCoordinate = True
+            self.pointCoordinate = False
+            self.showPoint = False
 
     def expandMultipleButton(self):
         if(self.MultiplePointsFrame.height() >= 255):
@@ -334,11 +342,27 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
     lPointDepth2 = 0.00
     lineDistance = 0.00
     showLineDistance = False
+    showLine = False
+
+    def enterPoint(self):
+        self.showPoint = True
 
     def enterLinePoint1(self):
         self.showLinePoint1 = True
 
     def enterLinePoint2(self):
+        self.showLinePoint2 = True
+
+    def showLineFunction(self):
+        self.lPointX1 = int(self.LineX1.toPlainText()) #Update the entered coordinates
+        self.lPointX2 = int(self.LineX2.toPlainText())
+        self.lPointY1 = int(self.LineY1.toPlainText())
+        self.lPointY2 = int(self.LineY2.toPlainText())
+        
+        self.showLine = True #display the end points and line
+        self.linePoint1 = True
+        self.linePoint2 = True
+        self.showLinePoint1= True 
         self.showLinePoint2 = True
 
     #Function to get the point coords entered by user & display depth. 
@@ -366,7 +390,12 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         #print ("depth_scale: " + str(depth_scale))
         self.lineDistance = (math.sqrt(((Z1[0] - Z2[0])** 2) + ((Z1[1] - Z2[1]) ** 2) + ((Z1[2] - Z2[2]) ** 2)))
         #print ("distance: " + str(self.lineDistance))
+        self.linePoint1 = True
+        self.linePoint2 = True
+        self.showLinePoint1= True 
+        self.showLinePoint2 = True
         self.showLineDistance = True
+        self.showLine = True
 
     #Function to clear the point depth coords, point distance. 
     def clearPointDepth(self):
@@ -392,14 +421,17 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.showLinePoint2 = False
         self.linePoint1 = False
         self.linePoint2 = False
+        self.showLine = False
 
     #Get the position on either video label where the mouse clicked. 
     def getPosition(self, event):
         x = event.pos().x()
         y = event.pos().y()
-        if (self.pointCoordinate):
+        if (self.pointCoordinate and self.showPoint):
             self.PointX.setPlainText(str(x))
             self.PointY.setPlainText(str(y))
+            self.gPointX = x
+            self.gPointY = y
 
         if(self.LineDistance and self.showLinePoint1 and not self.linePoint1):
             self.LineX1.setPlainText(str(x))
@@ -422,19 +454,47 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         #Updates the image_label with a new opencv image
         circleImg = cv_img
         if(self.showPoint):
-            point = (self.gPointX, self.gPointY)
-            circleOneImg = cv2.circle(cv_img, point, 10, (0, 0, 0), -1) #Black circle with neon green border
-            circleImg = cv2.circle(circleOneImg, point, 10, (57,255,20), 2)
+            A = self.PointX.toPlainText()
+            B = self.PointY.toPlainText()
+            if( A.isdigit() and B.isdigit()): #Prevent the dot from showing up before first click.
+                #print("Point from gPoint: " + str(self.gPointX) + ", " + str(self.gPointY))
+                point = (self.gPointX, self.gPointY)
+                lPoint1A = (self.gPointX - 10, self.gPointY)
+                lPoint1B = (self.gPointX + 10, self.gPointY)
+                lPoint2A = (self.gPointX, self.gPointY - 10)
+                lPoint2B = (self.gPointX, self.gPointY + 10)
+                circleImg = cv2.circle(circleImg, point, 10, (0, 0, 0), -1) #Black circle with neon green border
+                circleImg = cv2.circle(circleImg, point, 10, (57,255,20), 2)
+                circleImg = cv2.line(circleImg, lPoint1A, lPoint1B, (255,255,255), 1)
+                circleImg = cv2.line(circleImg, lPoint2A, lPoint2B, (255,255,255), 1)
         
         if(self.showLinePoint1 and self.linePoint1): #This will make it so that only one point is ever shown, not two points....
             point = (self.lPointX1, self.lPointY1)
-            circleOneImg = cv2.circle(cv_img, point, 10, (0, 0, 0), -1) #Black circle with neon green border
-            circleImg = cv2.circle(circleOneImg, point, 10, (57,255,20), 2)
+            lPoint1A = (self.lPointX1 - 10, self.lPointY1)
+            lPoint1B = (self.lPointX1 + 10, self.lPointY1)
+            lPoint2A = (self.lPointX1, self.lPointY1 - 10)
+            lPoint2B = (self.lPointX1, self.lPointY1 + 10)
+            circleImg = cv2.circle(circleImg, point, 10, (0, 0, 0), -1) #Black circle with neon green border
+            circleImg = cv2.circle(circleImg, point, 10, (57,255,20), 2)
+            circleImg = cv2.line(circleImg, lPoint1A, lPoint1B, (255,255,255), 1)
+            circleImg = cv2.line(circleImg, lPoint2A, lPoint2B, (255,255,255), 1)
 
         if(self.showLinePoint2 and self.linePoint2):
             point = (self.lPointX2, self.lPointY2)
-            circleOneImg = cv2.circle(cv_img, point, 10, (0, 0, 0), -1) #Black circle with neon pink border
-            circleImg = cv2.circle(circleOneImg, point, 10, (251,72,196), 2)
+            lPoint1A = (self.lPointX2 - 10, self.lPointY2)
+            lPoint1B = (self.lPointX2 + 10, self.lPointY2)
+            lPoint2A = (self.lPointX2, self.lPointY2 - 10)
+            lPoint2B = (self.lPointX2, self.lPointY2 + 10)
+            circleImg = cv2.circle(circleImg, point, 10, (0, 0, 0), -1) #Black circle with neon pink border
+            circleImg = cv2.circle(circleImg, point, 10, (251,72,196), 2)
+            circleImg = cv2.line(circleImg, lPoint1A, lPoint1B, (255,255,255), 1)
+            circleImg = cv2.line(circleImg, lPoint2A, lPoint2B, (255,255,255), 1)
+
+        if(self.showLine):
+            A = (self.lPointX1, self.lPointY1)
+            B = (self.lPointX2, self.lPointY2)
+            circleImg = cv2.line(circleImg, A, B, (0,0,0), 4)
+            circleImg = cv2.line(circleImg, A, B, (255,255,255), 1)
 
         qt_img = self.convert_cv_qt(circleImg)
         self.ColorVideo.setPixmap(qt_img) #self.image_label.setPixmap(qt_img)
@@ -442,20 +502,48 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
     def update_depth_image(self, dv_img):
         #Updates the image_label with a new opencv image
         circleImg = dv_img
-        if (self.showPoint): #Display the circle on the depth feed. 
-            point = (self.gPointX, self.gPointY)
-            circleOneImg = cv2.circle(dv_img, point, 10, (0, 0, 0), -1) #Black circle with neon green border
-            circleImg = cv2.circle(circleOneImg, point, 10, (57,255,20), 2)
-
+        if(self.showPoint):
+            A = self.PointX.toPlainText()
+            B = self.PointY.toPlainText()
+            if( A.isdigit() and B.isdigit()): #Prevent the dot from showing up before first click.
+                #print("Point from gPoint: " + str(self.gPointX) + ", " + str(self.gPointY))
+                point = (self.gPointX, self.gPointY)
+                lPoint1A = (self.gPointX - 10, self.gPointY)
+                lPoint1B = (self.gPointX + 10, self.gPointY)
+                lPoint2A = (self.gPointX, self.gPointY - 10)
+                lPoint2B = (self.gPointX, self.gPointY + 10)
+                circleImg = cv2.circle(circleImg, point, 10, (0, 0, 0), -1) #Black circle with neon green border
+                circleImg = cv2.circle(circleImg, point, 10, (57,255,20), 2)
+                circleImg = cv2.line(circleImg, lPoint1A, lPoint1B, (255,255,255), 1)
+                circleImg = cv2.line(circleImg, lPoint2A, lPoint2B, (255,255,255), 1)
+        
         if(self.showLinePoint1 and self.linePoint1): #This will make it so that only one point is ever shown, not two points....
             point = (self.lPointX1, self.lPointY1)
-            circleOneImg = cv2.circle(dv_img, point, 10, (0, 0, 0), -1) #Black circle with neon green border
-            circleImg = cv2.circle(circleOneImg, point, 10, (57,255,20), 2)
+            lPoint1A = (self.lPointX1 - 10, self.lPointY1)
+            lPoint1B = (self.lPointX1 + 10, self.lPointY1)
+            lPoint2A = (self.lPointX1, self.lPointY1 - 10)
+            lPoint2B = (self.lPointX1, self.lPointY1 + 10)
+            circleImg = cv2.circle(circleImg, point, 10, (0, 0, 0), -1) #Black circle with neon green border
+            circleImg = cv2.circle(circleImg, point, 10, (57,255,20), 2)
+            circleImg = cv2.line(circleImg, lPoint1A, lPoint1B, (255,255,255), 1)
+            circleImg = cv2.line(circleImg, lPoint2A, lPoint2B, (255,255,255), 1)
 
         if(self.showLinePoint2 and self.linePoint2):
             point = (self.lPointX2, self.lPointY2)
-            circleOneImg = cv2.circle(dv_img, point, 10, (0, 0, 0), -1) #Black circle with neon pink border
-            circleImg = cv2.circle(circleOneImg, point, 10, (251,72,196), 2)
+            lPoint1A = (self.lPointX2 - 10, self.lPointY2)
+            lPoint1B = (self.lPointX2 + 10, self.lPointY2)
+            lPoint2A = (self.lPointX2, self.lPointY2 - 10)
+            lPoint2B = (self.lPointX2, self.lPointY2 + 10)
+            circleImg = cv2.circle(circleImg, point, 10, (0, 0, 0), -1) #Black circle with neon pink border
+            circleImg = cv2.circle(circleImg, point, 10, (251,72,196), 2)
+            circleImg = cv2.line(circleImg, lPoint1A, lPoint1B, (255,255,255), 1)
+            circleImg = cv2.line(circleImg, lPoint2A, lPoint2B, (255,255,255), 1)
+
+        if(self.showLine):
+            A = (self.lPointX1, self.lPointY1)
+            B = (self.lPointX2, self.lPointY2)
+            circleImg = cv2.line(circleImg, A, B, (0,0,0), 4)
+            circleImg = cv2.line(circleImg, A, B, (255,255,255), 1)
 
         qt_img = self.convert_cv_qt(circleImg)
         self.DepthVideo.setPixmap(qt_img) #self.image_label.setPixmap(qt_img)
