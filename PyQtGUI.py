@@ -30,7 +30,7 @@
 from contextlib import nullcontext
 from tkinter import Frame
 from PyQt5 import QtGui
-from PyQt5.QtGui import QPixmap, QIcon
+from PyQt5.QtGui import QPixmap, QIcon, QCursor
 import sys
 import cv2
 import math
@@ -179,6 +179,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.PointDistanceFrame.setMaximumSize(QtCore.QSize(603,44))
             self.pointCoordinate = False
             self.showPoint = False
+            self.ColorVideo.setCursor(QCursor(QtCore.Qt.ArrowCursor))
+            self.DepthVideo.setCursor(QCursor(QtCore.Qt.ArrowCursor))
 
         else:
             self.ExpandPoint.setIcon(QIcon("Icons/CollapseArrow.png"))
@@ -207,6 +209,9 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.lineCoordinate = False
             self.showLinePoint1 = False
             self.showLinePoint2 = False
+            self.showLine = False
+            self.ColorVideo.setCursor(QCursor(QtCore.Qt.ArrowCursor))
+            self.DepthVideo.setCursor(QCursor(QtCore.Qt.ArrowCursor))
 
         else:
             self.ExpandLine.setIcon(QIcon("Icons/CollapseArrow.png"))
@@ -309,18 +314,22 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
 
     #Capture and save a picture from color or depth feeds. These work if the video is live streaming or not. 
     def colorPic(self):
+        self.MainBody.setCursor(QCursor(QtCore.Qt.WaitCursor))
         ret, color_image, depth_image, unused = self.thread1.dc.get_frame()
         now = datetime.now()
         dtstring = now.strftime("%d:%m:%Y %H:%M:%S")
         picName = "Color Image " + dtstring + ".jpeg"
         cv2.imwrite("../../Desktop/" + picName, color_image)
+        self.MainBody.setCursor(QCursor(QtCore.Qt.ArrowCursor))
 
     def depthPic(self):
+        self.MainBody.setCursor(QCursor(QtCore.Qt.WaitCursor))
         ret, color_image, depth_image, unused = self.thread2.dc.get_frame()
         now = datetime.now()
         dtstring = now.strftime("%d:%m:%Y %H:%M:%S")
         picName = "Depth Image " + dtstring + ".jpeg"
         cv2.imwrite("../../Desktop/" + picName, depth_image) #Home/Documents/Realsense 435i Project/
+        self.MainBody.setCursor(QCursor(QtCore.Qt.ArrowCursor))
 
     #Bools for getting and displaying point depth
     pointDepth = 0.00 #Varable for point depth. 
@@ -346,12 +355,29 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def enterPoint(self):
         self.showPoint = True
+        self.PointSelect.setStyleSheet("QPushButton {background-color : rgb(255,173,0); }")
+        self.ColorVideo.setCursor(QCursor(QtCore.Qt.CrossCursor)) #Change the cursor when over the videos
+        self.DepthVideo.setCursor(QCursor(QtCore.Qt.CrossCursor))
 
     def enterLinePoint1(self):
         self.showLinePoint1 = True
+        if(self.showLinePoint2 and self.LinePoint2.isEnabled()): #If the other function clicked and if button is still enabled
+            self.showLinePoint2 = False
+            self.LinePoint2.setStyleSheet("QPushButton {background-color : white;}")
+
+        self.LinePoint1.setStyleSheet("QPushButton {background-color: rgb(57,255,20);}")
+        self.ColorVideo.setCursor(QCursor(QtCore.Qt.CrossCursor))
+        self.DepthVideo.setCursor(QCursor(QtCore.Qt.CrossCursor))
 
     def enterLinePoint2(self):
         self.showLinePoint2 = True
+        if(self.showLinePoint1 and self.LinePoint1.isEnabled()):
+            self.showLinePoint1 = False
+            self.LinePoint1.setStyleSheet("QPushButton {background-color : white;}")
+
+        self.LinePoint2.setStyleSheet("QPushButton {background-color : rgb(251,72,196);}")
+        self.ColorVideo.setCursor(QCursor(QtCore.Qt.CrossCursor))
+        self.DepthVideo.setCursor(QCursor(QtCore.Qt.CrossCursor))
 
     def showLineFunction(self):
         self.lPointX1 = int(self.LineX1.toPlainText()) #Update the entered coordinates
@@ -364,6 +390,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.linePoint2 = True
         self.showLinePoint1= True 
         self.showLinePoint2 = True
+        #self.LinePoint1.setEnabled(False) #They can still edit the point, just not the click, so doesn't make sense to gray out. 
+        #self.LinePoint2.setEnabled(False)
 
     #Function to get the point coords entered by user & display depth. 
     def calculatePointDepth(self):
@@ -396,6 +424,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.showLinePoint2 = True
         self.showLineDistance = True
         self.showLine = True
+        self.LinePoint1.setEnabled(False)
+        self.LinePoint2.setEnabled(False)
 
     #Function to clear the point depth coords, point distance. 
     def clearPointDepth(self):
@@ -405,6 +435,9 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.PointY.clear()
         self.PointDistance.clear()
         self.showPoint = False
+        self.PointSelect.setStyleSheet("QPushButton {background-color : white; }")
+        self.ColorVideo.setCursor(QCursor(QtCore.Qt.ArrowCursor)) #Set the cursors back to normal
+        self.DepthVideo.setCursor(QCursor(QtCore.Qt.ArrowCursor))
 
     #Function to clear the line distance coords, line distance.
     def clearLineDistance(self):
@@ -417,11 +450,17 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.LineY1.clear()
         self.LineY2.clear()
         self.LineDistance.clear()
+        self.LinePoint1.setEnabled(True)
+        self.LinePoint2.setEnabled(True)
+        self.LinePoint1.setStyleSheet("QPushButton {background-color : white;}")
+        self.LinePoint2.setStyleSheet("QPushButton {background-color : white;}")
         self.showLinePoint1 = False
         self.showLinePoint2 = False
         self.linePoint1 = False
         self.linePoint2 = False
         self.showLine = False
+        self.ColorVideo.setCursor(QCursor(QtCore.Qt.ArrowCursor))
+        self.DepthVideo.setCursor(QCursor(QtCore.Qt.ArrowCursor))
 
     #Get the position on either video label where the mouse clicked. 
     def getPosition(self, event):
@@ -439,6 +478,9 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.lPointX1 = x
             self.lPointY1 = y
             self.linePoint1 = True
+            self.LinePoint1.setEnabled(False)
+            self.ColorVideo.setCursor(QCursor(QtCore.Qt.ArrowCursor))
+            self.DepthVideo.setCursor(QCursor(QtCore.Qt.ArrowCursor))
 
         if(self.LineDistance and self.showLinePoint2 and not self.linePoint2):
             self.LineX2.setPlainText(str(x))
@@ -446,6 +488,9 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.lPointX2 = x
             self.lPointY2 = y
             self.linePoint2 = True
+            self.LinePoint2.setEnabled(False)
+            self.ColorVideo.setCursor(QCursor(QtCore.Qt.ArrowCursor))
+            self.DepthVideo.setCursor(QCursor(QtCore.Qt.ArrowCursor))
         #print("X = " + str(x) + ", Y = " + str(y))
 
     #Connecting the actual Qt slots to the video feeds so they can be displayed
@@ -463,8 +508,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
                 lPoint1B = (self.gPointX + 10, self.gPointY)
                 lPoint2A = (self.gPointX, self.gPointY - 10)
                 lPoint2B = (self.gPointX, self.gPointY + 10)
-                circleImg = cv2.circle(circleImg, point, 10, (0, 0, 0), -1) #Black circle with neon green border
-                circleImg = cv2.circle(circleImg, point, 10, (57,255,20), 2)
+                circleImg = cv2.circle(circleImg, point, 10, (0, 0, 0), -1) #Black circle with neon orange border
+                circleImg = cv2.circle(circleImg, point, 10, (0,173,255), 2) 
                 circleImg = cv2.line(circleImg, lPoint1A, lPoint1B, (255,255,255), 1)
                 circleImg = cv2.line(circleImg, lPoint2A, lPoint2B, (255,255,255), 1)
         
@@ -512,8 +557,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
                 lPoint1B = (self.gPointX + 10, self.gPointY)
                 lPoint2A = (self.gPointX, self.gPointY - 10)
                 lPoint2B = (self.gPointX, self.gPointY + 10)
-                circleImg = cv2.circle(circleImg, point, 10, (0, 0, 0), -1) #Black circle with neon green border
-                circleImg = cv2.circle(circleImg, point, 10, (57,255,20), 2)
+                circleImg = cv2.circle(circleImg, point, 10, (0, 0, 0), -1) #Black circle with neon orange border
+                circleImg = cv2.circle(circleImg, point, 10, (0,173,255), 2)
                 circleImg = cv2.line(circleImg, lPoint1A, lPoint1B, (255,255,255), 1)
                 circleImg = cv2.line(circleImg, lPoint2A, lPoint2B, (255,255,255), 1)
         
