@@ -19,6 +19,7 @@
 #Right now some of this is static and not variable, for the sake of getting results. Should fix later though. 
 #If you exit out of the GUI without stopping the video streams first you cause a segmentation fault. I need to fix that..
 #This main file should definitely get broken up into a few smaller files
+#I think the github part of this has finally been straightened out. This comment is a test to see if I can push correctly. 
 
 #TODO
 #I need to do more testing on the distance between two points. I think if you mark it on the depth video where you can make sure 
