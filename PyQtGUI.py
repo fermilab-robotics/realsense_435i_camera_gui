@@ -27,8 +27,6 @@
 #Rework the video and depth feeds to have a single overlay instead of manually applying it both times. Will require reworking code
 # as well as reworking the GUI layout. (PyQt5 doesn't like overlays)
 
-from contextlib import nullcontext
-from tkinter import Frame
 from PyQt5 import QtGui
 from PyQt5.QtGui import QPixmap, QIcon, QCursor
 import sys
@@ -39,7 +37,6 @@ import numpy as np
 import pyrealsense2 as rs
 
 from datetime import datetime
-import time
 
 from GUI import *
 

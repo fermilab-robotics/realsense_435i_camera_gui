@@ -1,5 +1,7 @@
 #This is the file that gives functionality to the GUI. 
 #The actual GUI is the GUI.py file
+#The PyQt5GUI.ui file is the designer file that then gets converted to the GUI.py file
+#Conversion command: pyuic5 -x PyQt5GUI.ui -o GUI.py
 
 #Functions:
 #GUI that connects to the designer file. 
@@ -15,6 +17,9 @@
 #This main file should definitely get broken up into a few smaller files
 #See if there is a color overlay specifically for this camera, the CV2 one may be slightly inaccurate/limiting. 
 
+
+from ctypes import pointer
+from os import device_encoding
 from PyQt5 import QtGui
 from PyQt5.QtGui import QPixmap, QIcon
 import sys
@@ -67,7 +72,7 @@ class DepthCamera:
 #This is the class that allows us to create a thread specifically to run the video feed so that the QT
 #program can still do other functional things. 
 class VideoThread(QThread):
-    change_pixmap_signal = pyqtSignal(np.ndarray)
+    change_pixmap_signal = pyqtSignal(np.ndarray) #Need two arrays?
     change_pixmap_signal2 = pyqtSignal(np.ndarray)
 
     def __init__(self):
@@ -240,17 +245,32 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         picName = "Depth Image " + dtstring + ".jpeg"
         cv2.imwrite("../../Desktop/" + picName, depth_image) #Home/Documents/Realsense 435i Project/
 
+    def show_distance(self, depth_image):
+        point = (400, 300)
+        #distance = depth_image[point[1], point[0]] #y, then X
+        distance = depth_image.get_distance(point[1], point[0])
+        point_depth = cv2.circle(depth_image, point, 6, (0,0,255))
+        print(distance)
+        #point_depth = cv2.putText(depth_image, "{}mm".format(distance), (point[0], point[1]-20), cv2.FONT_HERSHEY_PLAIN, 2, (0,0,0), 2)
+        return point_depth
+
+    #cv2.setMouseCallback(self.cv_img, show_distance) #what is the name of the place where this is getting displayed?
+    #I don't think using CV2 to do this is going to work? At least not this simply. 
+    
+
 
     #Connecting the actual Qt slots to the video feeds so they can be displayed
     @pyqtSlot(np.ndarray)
     def update_color_image(self, cv_img):
         #Updates the image_label with a new opencv image
-        qt_img = self.convert_cv_qt(cv_img)
+        #point_depth_image = self.show_distance(dv_img, cv_img)
+        qt_img = self.convert_cv_qt(cv_img) #cv_img
         self.ColorVideo.setPixmap(qt_img) #self.image_label.setPixmap(qt_img)
 
     def update_depth_image(self, dv_img):
         #Updates the image_label with a new opencv image
-        qt_img = self.convert_cv_qt(dv_img)
+        point_depth_image = self.show_distance(dv_img)
+        qt_img = self.convert_cv_qt(dv_img) #dv_img
         self.DepthVideo.setPixmap(qt_img) #self.image_label.setPixmap(qt_img)
     
     def convert_cv_qt(self, cv_img):
@@ -261,7 +281,6 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         convert_to_Qt_format = QtGui.QImage(rgb_image.data, w, h, bytes_per_line, QtGui.QImage.Format_RGB888)
         p = convert_to_Qt_format.scaled(640, 480, Qt.KeepAspectRatio) #static setting right now, make variable at some point?
         return QPixmap.fromImage(p)
-
 
 #The stuff necessary to actually show the window
 if __name__=="__main__":
