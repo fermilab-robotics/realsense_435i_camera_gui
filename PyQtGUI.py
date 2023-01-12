@@ -132,8 +132,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.StartColorVideo.clicked.connect(lambda state: self.colorStartThread())
         self.StopColorVideo.clicked.connect(lambda state: self.colorCloseEvent())
 
-        self.StartDepthVideo.clicked.connect(lambda state: self.depthStartThread())
-        self.StopDepthVideo.clicked.connect(lambda state: self.depthCloseEvent())
+        #self.StartDepthVideo.clicked.connect(lambda state: self.depthStartThread())
+        #self.StopDepthVideo.clicked.connect(lambda state: self.depthCloseEvent())
 
         self.SaveColorPic.clicked.connect(lambda state: self.colorPic())
         self.SaveDepthPic.clicked.connect(lambda state: self.depthPic())
@@ -269,46 +269,54 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.RadiusFrame.setMaximumSize(QtCore.QSize(603,255))
 
     #Variables to make sure all threads are terminated at end of program run. 
-    T1 = False #T1/thread1 = color video thread
-    T2 = False #T2/thread2 = depth video thread
-    T3 = False #T3/thread3 = depth image thread for depth calculations. 
+    #T1 = False #T1/thread1 = color video thread
+    #T2 = False #T2/thread2 = depth video thread
+    #T3 = False #T3/thread3 = depth image thread for depth calculations. 
 
     #Again with the static variables, the stops could definitely be combined, starts could maybe as well. 
     def colorCloseEvent(self):
         self.thread1.stop()
-        self.T1 = False
-        if (not self.T2 ): 
-            self.thread3.stop() 
-            self.T3 = False
+        self.thread2.stop()
+        self.thread3.stop()
+        #self.T1 = False
+        #if (not self.T2 ): 
+            #self.thread3.stop() 
+            #self.T3 = False
         #event.accept()
 
-    def depthCloseEvent(self):
-        self.thread2.stop()
-        self.T2 = False
-        if (not self.T1): 
-            self.thread3.stop()
-            self.T3 = False
+    #def depthCloseEvent(self):
+        #self.thread2.stop()
+        #self.T2 = False
+        #if (not self.T1): 
+            #self.thread3.stop()
+            #self.T3 = False
         #event.accept()
 
     def colorStartThread(self):
         self.thread1 = VideoThread() #Create a thread to get the video image
         self.thread1.change_pixmap_signal.connect(self.update_color_image) #Connect its signal to the update_image slot
         self.thread1.start() #Start the thread
-        self.T1 = True
-        if (not self.T3): self.depthDataStart() #Also start the data thread
 
-    def depthStartThread(self):
         self.thread2 = VideoThread() #Create a thread to get the depth image
         self.thread2.change_pixmap_signal2.connect(self.update_depth_image) #Connect its signal to the update_image slot
         self.thread2.start() #Start the thread
-        self.T2 = True
-        if (not self.T3): self.depthDataStart() #Also start the data thread
+
+        self.depthDataStart() #Start the data thread too. 
+        #self.T1 = True
+        #if (not self.T3): self.depthDataStart() #Also start the data thread
+
+    #def depthStartThread(self):
+        #self.thread2 = VideoThread() #Create a thread to get the depth image
+        #self.thread2.change_pixmap_signal2.connect(self.update_depth_image) #Connect its signal to the update_image slot
+        #self.thread2.start() #Start the thread
+        #self.T2 = True
+        #if (not self.T3): self.depthDataStart() #Also start the data thread
 
     def depthDataStart(self):
         self.thread3 = VideoThread() #Create a thread to get the depth data stream
         self.thread3.change_depth_signal.connect(self.update_Depth)
         self.thread3.start()
-        self.T3 = True
+        #self.T3 = True
 
     #Capture and save a picture from color or depth feeds. These work if the video is live streaming or not. 
     def colorPic(self):
