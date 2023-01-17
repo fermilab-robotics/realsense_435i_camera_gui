@@ -143,11 +143,18 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.ExpandLine.setIcon(QIcon("Icons/ExpandArrow.png"))
         self.ExpandMultiple.setIcon(QIcon("Icons/ExpandArrow.png"))
         self.ExpandRadius.setIcon(QIcon("Icons/ExpandArrow.png"))
+        self.LiveVideoExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+        self.SavedDataExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+        self.DataSaveExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
 
         self.ExpandPoint.clicked.connect(lambda state: self.expandPointButton())
         self.ExpandLine.clicked.connect(lambda state: self.expandLineButton())
         self.ExpandMultiple.clicked.connect(lambda state: self.expandMultipleButton())
         self.ExpandRadius.clicked.connect(lambda state: self.expandRadiusButton())
+
+        self.LiveVideoExpand.clicked.connect(lambda state: self.expandLiveVideo())
+        self.SavedDataExpand.clicked.connect(lambda state: self.expandSavedData())
+        self.DataSaveExpand.clicked.connect(lambda state: self.expandDataSave())
 
         self.PointSelect.clicked.connect(lambda state: self.enterPoint())
         self.CalculatePointDistance.clicked.connect(lambda state: self.calculatePointDepth())
@@ -268,6 +275,59 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.RadiusFrame.setMinimumSize(QtCore.QSize(603,255))
             self.RadiusFrame.setMaximumSize(QtCore.QSize(603,255))
 
+    def expandLiveVideo(self):
+        if(self.VideoControlsFrame.height() >= 170):
+            self.LiveVideoExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.VideoControlsFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.VideoControlsFrame.setMaximumSize(QtCore.QSize(603, 44))
+
+        else:
+            self.VideoControlsFrame.setMinimumSize(QtCore.QSize(603, 170))
+            self.VideoControlsFrame.setMaximumSize(QtCore.QSize(603, 170))
+            self.LiveVideoExpand.setIcon(QIcon("Icons/CollapseArrow.png"))
+            self.SavedDataExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.DataSaveExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.SavedDataFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.SavedDataFrame.setMaximumSize(QtCore.QSize(603, 44))
+            self.DataSaveFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.DataSaveFrame.setMaximumSize(QtCore.QSize(603, 44))
+
+
+    def expandSavedData(self):
+        if(self.SavedDataFrame.height() >= 170):
+            self.SavedDataExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.SavedDataFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.SavedDataFrame.setMaximumSize(QtCore.QSize(603, 44))
+
+        else:
+            self.SavedDataFrame.setMinimumSize(QtCore.QSize(603, 170))
+            self.SavedDataFrame.setMaximumSize(QtCore.QSize(603, 170))
+            self.SavedDataExpand.setIcon(QIcon("Icons/CollapseArrow.png"))
+            self.LiveVideoExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.DataSaveExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.VideoControlsFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.VideoControlsFrame.setMaximumSize(QtCore.QSize(603, 44))
+            self.DataSaveFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.DataSaveFrame.setMaximumSize(QtCore.QSize(603, 44))
+
+ 
+    def expandDataSave(self):
+        if(self.DataSaveFrame.height() >= 200):
+            self.DataSaveExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.DataSaveFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.DataSaveFrame.setMaximumSize(QtCore.QSize(603, 44))
+
+        else:
+            self.DataSaveFrame.setMinimumSize(QtCore.QSize(603, 200))
+            self.DataSaveFrame.setMaximumSize(QtCore.QSize(603, 200))
+            self.DataSaveExpand.setIcon(QIcon("Icons/CollapseArrow.png"))
+            self.SavedDataExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.LiveVideoExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.SavedDataFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.SavedDataFrame.setMaximumSize(QtCore.QSize(603, 44))
+            self.VideoControlsFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.VideoControlsFrame.setMaximumSize(QtCore.QSize(603, 44))
+        
     #Variables to make sure all threads are terminated at end of program run. 
     #T1 = False #T1/thread1 = color video thread
     #T2 = False #T2/thread2 = depth video thread
