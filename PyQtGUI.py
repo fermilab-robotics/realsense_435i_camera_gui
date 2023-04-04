@@ -12,14 +12,16 @@
 # The line distance menu is complete. You can click or type in points, edit them afterwards typed, draw line, and
 #  get the distance between the two points. I think the distance is decently accurate too, the depth feed isn't
 #  perfect and shadows can wreak havoc (Points in shadows become (null, null) which kills distance calculations.) 
+#You can record a .bag file (the length is currently set only in the code)
+#You can then load a .bag file from the GUI and it will play on a loop. You can also take measurements from it, although
+#  right now everything is moving, so I really need a pause function for this to be truly useful. 
 
 
 #Issues:
-#This is using threading, but I may not be terminating things correctly? Especially the camera. (See note 3, definitely a thing)
 #Right now some of this is static and not variable, for the sake of getting results. Should fix later though. 
-#If you exit out of the GUI without stopping the video streams first you cause a segmentation fault. I need to fix that..
 #This main file should definitely get broken up into a few smaller files
-#I think the github part of this has finally been straightened out. This comment is a test to see if I can push correctly. 
+#Right now the recorded video just plays in an endless loop, I need a pause button, and a fastforward or reverse would be realy nice. 
+
 
 #TODO
 #I need to do more testing on the distance between two points. I think if you mark it on the depth video where you can make sure 
@@ -56,6 +58,7 @@ class DepthCamera:
     #global pipeline 
     pipelineStarted = False
     recordingPipelineStarted = False
+    replayPipelineStarted = False
 
     def startPipeline(self): #def __init__(self):#This is called as soon as the GUI starts. I wonder if I broke it out into a different class if it might not be?
         # Configure depth and color streams
@@ -87,6 +90,18 @@ class DepthCamera:
         self.pipeline.start(config)
         self.recordingPipelineStarted = True
         print("Recording pipeline started")
+
+    def startReplayPipeline(self): #Need to be able to pass in the file name. 
+        self.pipeline = rs.pipeline()
+        config = rs.config()
+        fileName = FileName.fName
+        print(fileName)
+        rs.config.enable_device_from_file(config, fileName)
+        config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        self.pipeline.start(config)
+        self.replayPipelineStarted = True
+        print("Pre-Recorded Pipeline Started")
     
     def get_frame(self):
         frames = self.pipeline.wait_for_frames()
@@ -117,6 +132,7 @@ class DepthCamera:
         print("Pipeline stopped\n")
         self.pipelineStarted = False
         self.recordingPipelineStarted = False
+        self.replayPipelineStarted = False
 
 #This is the class that allows us to create a thread specifically to run the video feed so that the QT
 #program can still do other functional things. 
@@ -133,8 +149,9 @@ class VideoThread(QThread):
     def __init__(self, pipeline):
         super().__init__()
         self._run_flag = True
-        if(self.dc.pipelineStarted == False and pipeline == True): self.dc.startPipeline() 
-        if(self.dc.recordingPipelineStarted == False and pipeline == False): self.dc.startRecordingPipeline() 
+        if(self.dc.pipelineStarted == False and pipeline == "live"): self.dc.startPipeline() 
+        if(self.dc.recordingPipelineStarted == False and pipeline == "record"): self.dc.startRecordingPipeline() 
+        if(self.dc.replayPipelineStarted == False and pipeline == "replay"): self.dc.startReplayPipeline()
     
     def run(self):
         # Get the actual images from the camera to then be processed below
@@ -159,7 +176,10 @@ class VideoThread(QThread):
         self._run_flag = False
         self.wait()
         self.quit()
-        
+
+#Class used sheerly to move a variable from one class to the other. I suspect this is very bad practice. 
+class FileName:
+    fName = "test"#/home/susanna/Documents/realsense_435i_camera_gui/BagFileTest.bag" #The issue is probably getting from the original location to the code base location.
 
 #This is the class that is actually connecting to the GUI and adding functionality
 class App(QtWidgets.QMainWindow, Ui_MainWindow):
@@ -388,23 +408,25 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.thread3.lastStop() #The pipeline itself has to be stopped right before the very last thread is stopped. 
         self.colorPipelineRunning = False
         self.recordingPipelineRunning = False
+        self.replayPipelineRunning = False
 
 
     colorPipelineRunning = False
     recordingPipelineRunning = False
+    replayPipelineRunning = False
     #There used to be individual start/stop buttons for depth and color video, now they're just combined into one. 
     def colorStartThread(self):
-        if (self.recordingPipelineRunning): self.colorCloseEvent() #Stop the recording pipeline if it's running
+        if (self.recordingPipelineRunning or self.replayPipelineRunning): self.colorCloseEvent() #Stop the recording pipeline if it's running
 
-        self.thread1 = VideoThread(True) #Create a thread to get the video image
+        self.thread1 = VideoThread("live") #Create a thread to get the video image
         self.thread1.change_pixmap_signal.connect(self.update_color_image) #Connect its signal to the update_image slot
         self.thread1.start() #Start the thread
 
-        self.thread2 = VideoThread(True) #Create a thread to get the depth image
+        self.thread2 = VideoThread("live") #Create a thread to get the depth image
         self.thread2.change_pixmap_signal2.connect(self.update_depth_image) #Connect its signal to the update_image slot
         self.thread2.start() #Start the thread
 
-        self.depthDataStart(True) #Start the data thread too. 
+        self.depthDataStart("live") #Start the data thread too. 
         self.colorPipelineRunning = True
 
     def depthDataStart(self, x):
@@ -434,51 +456,57 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         cv2.imwrite("../../Desktop/" + picName, depth_image) #Home/Documents/Realsense 435i Project/
         self.MainBody.setCursor(QCursor(QtCore.Qt.ArrowCursor))
 
+    #def loadDataset(self): #This just loads the pictures...
+    #    fname = QFileDialog.getExistingDirectory(self, "Select a Directory") #load a directory name
+    #    print("This is directory name: " + fname)
+    #    cName = fname + "/color.jpeg"
+    #    cPix = QPixmap(cName)
+    #    dName = fname + "/depth.jpeg"
+    #    dPix = QPixmap(dName)
+    #    self.ColorVideo.setPixmap(cPix) #This sets the video frames to display the pictures. Yay!!! 
+    #    self.DepthVideo.setPixmap(dPix)
+    #    fname = fname + "/fileName.txt"
+    #    file1 = open(fname, "r+")
+    #    print(file1.readline())
+   
     def loadDataset(self):
-        fname = QFileDialog.getExistingDirectory(self, "Select a Directory") #load a directory name
-        print("This is directory name: " + fname)
-        cName = fname + "/color.jpeg"
-        cPix = QPixmap(cName)
-        dName = fname + "/depth.jpeg"
-        dPix = QPixmap(dName)
-        self.ColorVideo.setPixmap(cPix) #This sets the video frames to display the pictures. Yay!!! 
-        self.DepthVideo.setPixmap(dPix)
-        fname = fname + "/fileName.txt"
-        file1 = open(fname, "r+")
-        print(file1.readline())
-        #fname = QFileDialog.getOpenFileName(self, "Open File", "", "Python Files(*.py) ;; Text Files(*.txt)") #To load a single file
-        #fileName = fname[0]
-        #print("This is the file name: " + fname[0])
+        fname = QFileDialog.getOpenFileName(self, "Open File", "", "ROS Files(*.bag)") #"Python Files(*.py) ;; Text Files(*.txt)") #To load a single file
+        fileName = fname[0]
+        FileName.fName = fileName
+        print("This is the file name: " + fname[0])
 
-    stopRecording = False
+
+        self.thread1 = VideoThread("replay")
+        self.thread1.change_pixmap_signal.connect(self.update_color_image) #Connect its signal to the update_image slot
+        self.thread1.start() #Start the thread
+
+        self.thread2 = VideoThread("replay") #Create a thread to get the depth image
+        self.thread2.change_pixmap_signal2.connect(self.update_depth_image) #Connect its signal to the update_image slot
+        self.thread2.start() #Start the thread
+
+        self.depthDataStart("replay") #Start the data thread too. 
+        self.replayPipelineRunning = True
+
 
     def saveDataset(self): #Need to figure out a good naming convention for this though. 
 
-        if(self.colorPipelineRunning): self.colorCloseEvent() #Stop all previously running threads/pipeline so the data save pipeline can be opened. 
+        if(self.colorPipelineRunning or self.replayPipelineRunning): self.colorCloseEvent() #Stop all previously running threads/pipeline so the data save pipeline can be opened. 
 
         self.timer = QtCore.QTimer(self)
         self.timer.setSingleShot(True)
 
-        self.thread1 = VideoThread(False)
+        self.thread1 = VideoThread("record")
         self.thread1.change_pixmap_signal.connect(self.update_color_image) #Connect its signal to the update_image slot
         self.thread1.start() #Start the thread
 
-        self.thread2 = VideoThread(False) #Create a thread to get the depth image
+        self.thread2 = VideoThread("record") #Create a thread to get the depth image
         self.thread2.change_pixmap_signal2.connect(self.update_depth_image) #Connect its signal to the update_image slot
         self.thread2.start() #Start the thread
 
-        self.depthDataStart(False) #Start the data thread too. 
+        self.depthDataStart("record") #Start the data thread too. 
         self.recordingPipelineRunning = True
         self.start = time.time()
         self.timer.singleShot(5000, self.colorCloseEvent) #Can't include paranthesis, it really screws things up.
-
-    
-  
-
-        
-
-
-
 
     #Bools for getting and displaying point depth
     pointDepth = 0.00 #Varable for point depth. 
@@ -556,7 +584,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.lPointY1 = int(self.LineY1.toPlainText())
         self.lPointY2 = int(self.LineY2.toPlainText())
         
-        test = VideoThread(True) #TODO: This may be an issue if I'm trying to take data from a recorded .bag
+        if(self.replayPipelineRunning): test = VideoThread("replay")
+        else: test = VideoThread("live") #TODO: This may be an issue if I'm trying to take data from a recorded .bag
         #depth_scale = test.dc.depth_scale #The depth scale is fixed at 0.001 plus a tiny bit for the 400 series camera. 
         color_intrin = test.dc.color_intrin
         Z1 = rs.rs2_deproject_pixel_to_point(color_intrin, [self.lPointX1, self.lPointY1], self.lPointDepth1)
