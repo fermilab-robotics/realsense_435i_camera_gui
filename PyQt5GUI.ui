@@ -925,9 +925,9 @@ should appear and measurements can be taken. </string>
                     <property name="geometry">
                      <rect>
                       <x>-1</x>
-                      <y>49</y>
+                      <y>39</y>
                       <width>601</width>
-                      <height>151</height>
+                      <height>161</height>
                      </rect>
                     </property>
                     <property name="frameShape">
@@ -974,6 +974,9 @@ can be reloaded for data analysis later</string>
                             <strikeout>false</strikeout>
                            </font>
                           </property>
+                          <property name="styleSheet">
+                           <string notr="true">background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 rgba(9, 41, 4, 100), stop:0.085 rgba(2, 79, 0, 100), stop:0.19 rgba(50, 147, 22, 100), stop:0.275 rgba(236, 191, 49, 100), stop:0.39 rgba(243, 61, 34, 100), stop:0.555 rgba(135, 81, 60, 100), stop:0.667 rgba(121, 75, 255, 100), stop:0.825 rgba(164, 255, 244, 100), stop:0.885 rgba(104, 222, 71, 100), stop:1 rgba(93, 128, 0, 100));</string>
+                          </property>
                           <property name="text">
                            <string>Save Color Picture</string>
                           </property>
@@ -991,6 +994,9 @@ can be reloaded for data analysis later</string>
                             <strikeout>false</strikeout>
                            </font>
                           </property>
+                          <property name="styleSheet">
+                           <string notr="true">background-color: rgb(186, 189, 182);</string>
+                          </property>
                           <property name="text">
                            <string>Save Depth Picture</string>
                           </property>
@@ -1000,11 +1006,14 @@ can be reloaded for data analysis later</string>
                       </widget>
                      </item>
                      <item>
-                      <widget class="QPushButton" name="pushButton_8">
+                      <widget class="QPushButton" name="SaveDatasetButton">
                        <property name="font">
                         <font>
                          <pointsize>16</pointsize>
                         </font>
+                       </property>
+                       <property name="styleSheet">
+                        <string notr="true">background-color: rgb(136, 234, 253);</string>
                        </property>
                        <property name="text">
                         <string>Save Dataset</string>

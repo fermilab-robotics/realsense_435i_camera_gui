@@ -27,15 +27,23 @@
 #Add in the ability to reload a picture and take measurements. (This will mean reworking the picture taking algorithm, I think)
 #Rework the video and depth feeds to have a single overlay instead of manually applying it both times. Will require reworking code
 # as well as reworking the GUI layout. (PyQt5 doesn't like overlays)
+#Load and save datasets will need reworking. The load and save for pictures is the same, but for dataset need to 
+#   restart the pipeline to load the saved bag file. Save will probably need to restart the pipeline too, sigh.  
+#The pipeline will probably need to get reworked so that it can be started and stopped more easily. 
+#   1. stream raw data. 2, save a bag file (either picture or video). 3, load a saved bag file. 
 
 from PyQt5 import QtGui
 from PyQt5.QtGui import QPixmap, QIcon, QCursor
+from PyQt5.QtWidgets import QFileDialog
 import sys
 import cv2
 import math
-from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QThread
+from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QThread, QTimer 
 import numpy as np
 import pyrealsense2 as rs
+import time
+
+
 
 from datetime import datetime
 
@@ -45,7 +53,11 @@ from GUI import *
 class DepthCamera:
     depth_scale = 0
     color_intrin = []
-    def __init__(self):
+    #global pipeline 
+    pipelineStarted = False
+    recordingPipelineStarted = False
+
+    def startPipeline(self): #def __init__(self):#This is called as soon as the GUI starts. I wonder if I broke it out into a different class if it might not be?
         # Configure depth and color streams
         self.pipeline = rs.pipeline()
         config = rs.config()
@@ -62,14 +74,27 @@ class DepthCamera:
 
         # Start streaming
         self.pipeline.start(config)
+        print("pipeline started\n")
+        self.pipelineStarted = True
 
+    def startRecordingPipeline(self):
+        self.pipeline = rs.pipeline()
+        config = rs.config()
+        config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+
+        config.enable_record_to_file("BagFileTest.bag")
+        self.pipeline.start(config)
+        self.recordingPipelineStarted = True
+        print("Recording pipeline started")
+    
     def get_frame(self):
         frames = self.pipeline.wait_for_frames()
         
         #This step is necessary so that the depth and video feeds are showing the same thing. Otherwise they are offset. 
         #I'm combining from color to depth because depth to color compromises the color video feed dramatically. 
         align = rs.align(rs.stream.color)
-        frames = align.process(frames)
+        frames = align.process(frames) 
 
         depth_frame = frames.get_depth_frame()
         color_frame = frames.get_color_frame()
@@ -86,21 +111,31 @@ class DepthCamera:
             return False, None, None, None
         return True, color_image, depth_colormap, depth_frame #depth_image #Need to export depth_frame too. 
 
-    def release(self):
+    #I don't think this is valid, pipeline is declared in init, so it's not global. 
+    def stopPipeline(self):
         self.pipeline.stop()
+        print("Pipeline stopped\n")
+        self.pipelineStarted = False
+        self.recordingPipelineStarted = False
 
 #This is the class that allows us to create a thread specifically to run the video feed so that the QT
 #program can still do other functional things. 
 class VideoThread(QThread):
+
+    dc = DepthCamera() #This has to be declared outside of run() to prevent multiple pipelines from being opened   
+    
+    #Test variable to allow us to get depth_frame more easily. 
+    depth_frame_holder = None #This works!!! Or at least it stores something, TODO: Make sure this is updating! (I think it is)
     change_pixmap_signal = pyqtSignal(np.ndarray)
     change_pixmap_signal2 = pyqtSignal(np.ndarray)
-    change_depth_signal = pyqtSignal(object) #What type is it??
+    change_depth_signal = pyqtSignal(object) #What type is it?? - any or None. Basically doesn't have a type. 
 
-    def __init__(self):
+    def __init__(self, pipeline):
         super().__init__()
         self._run_flag = True
-
-    dc = DepthCamera() #This has to be declared outside of run() to prevent multiple pipelines from being opened
+        if(self.dc.pipelineStarted == False and pipeline == True): self.dc.startPipeline() 
+        if(self.dc.recordingPipelineStarted == False and pipeline == False): self.dc.startRecordingPipeline() 
+    
     def run(self):
         # Get the actual images from the camera to then be processed below
         while self._run_flag:
@@ -109,15 +144,22 @@ class VideoThread(QThread):
                 self.change_pixmap_signal.emit(cv_img)
                 self.change_pixmap_signal2.emit(dv_img)
                 self.change_depth_signal.emit(depth_data)
+                self.depth_frame_holder = depth_data
         # shut down capture system
         #cap.release()
 
+    def lastStop(self):
+        self.dc.stopPipeline() #Apparently this causes a whole slew of confusion. 
+        self._run_flag = False
+        self.wait()
+        self.quit()
 
     def stop(self):
         #Sets run flag to False and waits for thread to finish
         self._run_flag = False
         self.wait()
         self.quit()
+        
 
 #This is the class that is actually connecting to the GUI and adding functionality
 class App(QtWidgets.QMainWindow, Ui_MainWindow):
@@ -135,8 +177,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         #self.StartDepthVideo.clicked.connect(lambda state: self.depthStartThread())
         #self.StopDepthVideo.clicked.connect(lambda state: self.depthCloseEvent())
 
-        self.SaveColorPic.clicked.connect(lambda state: self.colorPic())
-        self.SaveDepthPic.clicked.connect(lambda state: self.depthPic())
+        self.SaveColorPic.clicked.connect(lambda state: self.colorPic(None))
+        self.SaveDepthPic.clicked.connect(lambda state: self.depthPic(None))
 
         #Add in the icons because the UIC file doesn't know where the images are actually stored
         self.ExpandPoint.setIcon(QIcon("Icons/ExpandArrow.png"))
@@ -169,6 +211,11 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         #Get the coordinates from either color or depth video stream mouse clicks. 
         self.ColorVideo.mousePressEvent = self.getPosition 
         self.DepthVideo.mousePressEvent = self.getPosition
+
+        self.LoadDataButton.clicked.connect(lambda state: self.loadDataset())
+        self.SaveDatasetButton.clicked.connect(lambda state: self.saveDataset())
+
+        #if(time.time() - self.start > 5): self.colorCloseEvent()
 
 
     #Bools to tell when to register clicks on the video streams for distance measurements. Flipped in expand functions.     
@@ -334,68 +381,104 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
     #T3 = False #T3/thread3 = depth image thread for depth calculations. 
 
     #Again with the static variables, the stops could definitely be combined, starts could maybe as well. 
+    
     def colorCloseEvent(self):
         self.thread1.stop()
         self.thread2.stop()
-        self.thread3.stop()
-        #self.T1 = False
-        #if (not self.T2 ): 
-            #self.thread3.stop() 
-            #self.T3 = False
-        #event.accept()
+        self.thread3.lastStop() #The pipeline itself has to be stopped right before the very last thread is stopped. 
+        self.colorPipelineRunning = False
+        self.recordingPipelineRunning = False
 
-    #def depthCloseEvent(self):
-        #self.thread2.stop()
-        #self.T2 = False
-        #if (not self.T1): 
-            #self.thread3.stop()
-            #self.T3 = False
-        #event.accept()
 
+    colorPipelineRunning = False
+    recordingPipelineRunning = False
+    #There used to be individual start/stop buttons for depth and color video, now they're just combined into one. 
     def colorStartThread(self):
-        self.thread1 = VideoThread() #Create a thread to get the video image
+        if (self.recordingPipelineRunning): self.colorCloseEvent() #Stop the recording pipeline if it's running
+
+        self.thread1 = VideoThread(True) #Create a thread to get the video image
         self.thread1.change_pixmap_signal.connect(self.update_color_image) #Connect its signal to the update_image slot
         self.thread1.start() #Start the thread
 
-        self.thread2 = VideoThread() #Create a thread to get the depth image
+        self.thread2 = VideoThread(True) #Create a thread to get the depth image
         self.thread2.change_pixmap_signal2.connect(self.update_depth_image) #Connect its signal to the update_image slot
         self.thread2.start() #Start the thread
 
-        self.depthDataStart() #Start the data thread too. 
-        #self.T1 = True
-        #if (not self.T3): self.depthDataStart() #Also start the data thread
+        self.depthDataStart(True) #Start the data thread too. 
+        self.colorPipelineRunning = True
 
-    #def depthStartThread(self):
-        #self.thread2 = VideoThread() #Create a thread to get the depth image
-        #self.thread2.change_pixmap_signal2.connect(self.update_depth_image) #Connect its signal to the update_image slot
-        #self.thread2.start() #Start the thread
-        #self.T2 = True
-        #if (not self.T3): self.depthDataStart() #Also start the data thread
-
-    def depthDataStart(self):
-        self.thread3 = VideoThread() #Create a thread to get the depth data stream
+    def depthDataStart(self, x):
+        self.thread3 = VideoThread(x) #Create a thread to get the depth data stream
         self.thread3.change_depth_signal.connect(self.update_Depth)
         self.thread3.start()
         #self.T3 = True
 
     #Capture and save a picture from color or depth feeds. These work if the video is live streaming or not. 
-    def colorPic(self):
+    def colorPic(self, x): 
         self.MainBody.setCursor(QCursor(QtCore.Qt.WaitCursor))
         ret, color_image, depth_image, unused = self.thread1.dc.get_frame()
         now = datetime.now()
         dtstring = now.strftime("%d:%m:%Y %H:%M:%S")
-        picName = "Color Image " + dtstring + ".jpeg"
+        if (isinstance(x, str)): picName = "color.jpeg" #This is so that datasets can be saved with a common name
+        else: picName = "Color Image " + dtstring + ".jpeg"
         cv2.imwrite("../../Desktop/" + picName, color_image)
         self.MainBody.setCursor(QCursor(QtCore.Qt.ArrowCursor))
 
-    def depthPic(self):
+    def depthPic(self, x):
         self.MainBody.setCursor(QCursor(QtCore.Qt.WaitCursor))
         ret, color_image, depth_image, unused = self.thread2.dc.get_frame()
         now = datetime.now()
         dtstring = now.strftime("%d:%m:%Y %H:%M:%S")
-        picName = "Depth Image " + dtstring + ".jpeg"
+        if(isinstance(x, str)): picName = "depth.jpeg"
+        else: picName = "Depth Image " + dtstring + ".jpeg"
         cv2.imwrite("../../Desktop/" + picName, depth_image) #Home/Documents/Realsense 435i Project/
         self.MainBody.setCursor(QCursor(QtCore.Qt.ArrowCursor))
+
+    def loadDataset(self):
+        fname = QFileDialog.getExistingDirectory(self, "Select a Directory") #load a directory name
+        print("This is directory name: " + fname)
+        cName = fname + "/color.jpeg"
+        cPix = QPixmap(cName)
+        dName = fname + "/depth.jpeg"
+        dPix = QPixmap(dName)
+        self.ColorVideo.setPixmap(cPix) #This sets the video frames to display the pictures. Yay!!! 
+        self.DepthVideo.setPixmap(dPix)
+        fname = fname + "/fileName.txt"
+        file1 = open(fname, "r+")
+        print(file1.readline())
+        #fname = QFileDialog.getOpenFileName(self, "Open File", "", "Python Files(*.py) ;; Text Files(*.txt)") #To load a single file
+        #fileName = fname[0]
+        #print("This is the file name: " + fname[0])
+
+    stopRecording = False
+
+    def saveDataset(self): #Need to figure out a good naming convention for this though. 
+
+        if(self.colorPipelineRunning): self.colorCloseEvent() #Stop all previously running threads/pipeline so the data save pipeline can be opened. 
+
+        self.timer = QtCore.QTimer(self)
+        self.timer.setSingleShot(True)
+
+        self.thread1 = VideoThread(False)
+        self.thread1.change_pixmap_signal.connect(self.update_color_image) #Connect its signal to the update_image slot
+        self.thread1.start() #Start the thread
+
+        self.thread2 = VideoThread(False) #Create a thread to get the depth image
+        self.thread2.change_pixmap_signal2.connect(self.update_depth_image) #Connect its signal to the update_image slot
+        self.thread2.start() #Start the thread
+
+        self.depthDataStart(False) #Start the data thread too. 
+        self.recordingPipelineRunning = True
+        self.start = time.time()
+        self.timer.singleShot(5000, self.colorCloseEvent) #Can't include paranthesis, it really screws things up.
+
+    
+  
+
+        
+
+
+
 
     #Bools for getting and displaying point depth
     pointDepth = 0.00 #Varable for point depth. 
@@ -473,7 +556,7 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.lPointY1 = int(self.LineY1.toPlainText())
         self.lPointY2 = int(self.LineY2.toPlainText())
         
-        test = VideoThread()
+        test = VideoThread(True) #TODO: This may be an issue if I'm trying to take data from a recorded .bag
         #depth_scale = test.dc.depth_scale #The depth scale is fixed at 0.001 plus a tiny bit for the 400 series camera. 
         color_intrin = test.dc.color_intrin
         Z1 = rs.rs2_deproject_pixel_to_point(color_intrin, [self.lPointX1, self.lPointY1], self.lPointDepth1)
