@@ -21,21 +21,30 @@
 #Right now some of this is static and not variable, for the sake of getting results. Should fix later though. 
 #This main file should definitely get broken up into a few smaller files
 #Right now the recorded video just plays in an endless loop, I need a pause button, and a fastforward or reverse would be realy nice. 
+#Right now you can only load .bag files stored in the program folder, I'm not sure why. 
+#When you pause a video, take a measurement, and then hit clear, it still displays the circles/lines on the screen. 
+#Pause is kind of working, but it's still a little weird. I had to add in a delay between sending back the saved frame,
+#   and I still don't understand why it's hitting in the order it is. 
+#When paused, frames aren't arriving quite like they should be, and the clear button doesn't work. It's like they're all 
+#   being saved on the original saved image. Everything fixes as soon as you start playing again. 
 
 
 #TODO
 #I need to do more testing on the distance between two points. I think if you mark it on the depth video where you can make sure 
 #  the depth feed is actually seeing it it's actually almost dead on. Within 2cm, and that's with me trying to be conservative on clicking. 
-#Add in the ability to reload a picture and take measurements. (This will mean reworking the picture taking algorithm, I think)
 #Rework the video and depth feeds to have a single overlay instead of manually applying it both times. Will require reworking code
-# as well as reworking the GUI layout. (PyQt5 doesn't like overlays)
-#Load and save datasets will need reworking. The load and save for pictures is the same, but for dataset need to 
-#   restart the pipeline to load the saved bag file. Save will probably need to restart the pipeline too, sigh.  
-#The pipeline will probably need to get reworked so that it can be started and stopped more easily. 
-#   1. stream raw data. 2, save a bag file (either picture or video). 3, load a saved bag file. 
+# as well as reworking the GUI layout. (PyQt5 doesn't like overlays) 
+#Add in pause and play buttons, fast forward and rewind would be nice.  
+
+#Future Features
+#1. Fix the clear issue for taking measurements on paused videos
+#2. Allow the user to pick what the saved dataset is named
+#3. Fix the loading dataset issue from any folder other than the programs current one
+#4. A 1 minute .bag file is 2.9GB long. Holy cow. That's not sustanable. 
+#5. Stopping recording is throwing a pipeline error, same as when pausing, frame requests are getting sent after pipeline closed.  
 
 from PyQt5 import QtGui
-from PyQt5.QtGui import QPixmap, QIcon, QCursor
+from PyQt5.QtGui import QPixmap, QIcon, QCursor, QPainter, QPen
 from PyQt5.QtWidgets import QFileDialog
 import sys
 import cv2
@@ -47,7 +56,7 @@ import time
 
 
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from GUI import *
 
@@ -59,6 +68,13 @@ class DepthCamera:
     pipelineStarted = False
     recordingPipelineStarted = False
     replayPipelineStarted = False
+    paused = False
+    i = 0
+
+    svar = None
+    scolor_image = None
+    sdepth_colormap = None
+    sdepth_frame = None
 
     def startPipeline(self): #def __init__(self):#This is called as soon as the GUI starts. I wonder if I broke it out into a different class if it might not be?
         # Configure depth and color streams
@@ -99,32 +115,79 @@ class DepthCamera:
         rs.config.enable_device_from_file(config, fileName)
         config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
         config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-        self.pipeline.start(config)
+        profile = self.pipeline.start(config)
+        self.playback = profile.get_device().as_playback()
+        self.playback.pause()
+        FileName.videoLength = self.playback.get_duration() #This gets the length of the .bag in seconds. 
+        #print(str(t.seconds))
+        self.playback.resume()
+        #self.playback.set_real_time(False) #This makes it play back at a fast speed. 
+        
         self.replayPipelineStarted = True
         print("Pre-Recorded Pipeline Started")
-    
+
+    firstFrame = False
+
     def get_frame(self):
-        frames = self.pipeline.wait_for_frames()
+        #If the datastream is paused, just keep sending the last data received. So simple in theory. 
+        if(self.firstFrame and self.paused): #This is never getting called because of the VideoThread Run function. 
+            print("We should be hitting here, but I bet we aren't")
+            return self.svar, self.scolor_image, self.sdepth_colormap, self.sdepth_frame 
         
-        #This step is necessary so that the depth and video feeds are showing the same thing. Otherwise they are offset. 
-        #I'm combining from color to depth because depth to color compromises the color video feed dramatically. 
-        align = rs.align(rs.stream.color)
-        frames = align.process(frames) 
+        if (not self.paused):
 
-        depth_frame = frames.get_depth_frame()
-        color_frame = frames.get_color_frame()
+            frame_present, frames = self.pipeline.try_wait_for_frames() #This returns a bool if there aren't any frames
+            
+            #This step is necessary so that the depth and video feeds are showing the same thing. Otherwise they are offset. 
+            #I'm combining from color to depth because depth to color compromises the color video feed dramatically. 
+            align = rs.align(rs.stream.color)
+            if (not frame_present): 
+                print ("Frame not present")
+                return self.svar, self.scolor_image, self.sdepth_colormap, self.sdepth_frame
+            
+            frames = align.process(frames) 
 
-        self.color_intrin = color_frame.profile.as_video_stream_profile().intrinsics #This is another set value, at least for when we'll be using it. 
+            depth_frame = frames.get_depth_frame()
+            color_frame = frames.get_color_frame()
 
-        depth_image = np.asanyarray(depth_frame.get_data())
-        color_image = np.asanyarray(color_frame.get_data())
+            self.color_intrin = color_frame.profile.as_video_stream_profile().intrinsics #This is another set value, at least for when we'll be using it. 
 
-        #This line is necessary to apply color to the depth frame. (This may need to be reworked to get acurate color mapping) 
-        depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.10), cv2.COLORMAP_JET)
+            depth_image = np.asanyarray(depth_frame.get_data())
+            color_image = np.asanyarray(color_frame.get_data())
+
+            #This line is necessary to apply color to the depth frame. (This may need to be reworked to get acurate color mapping) 
+            depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.10), cv2.COLORMAP_JET)
+
+            self.firstFrame = True
+            
+            #print("Normal acknowledge") 
+            if(self.paused): #This is getting hit sometimes, which is interesting. 
+                print("Are we ever hitting this??")
+                return self.svar, self.scolor_image, self.sdepth_colormap, self.sdepth_frame       
+            
+            elif (not depth_frame or not color_frame and not self.paused): #setting this to depth_colormap throws errors...
+                self.saveFrames(False, None, None, None)
+                return False, None, None, None
+            else: 
+                self.saveFrames(True, color_image, depth_colormap, depth_frame)
+                return True, color_image, depth_colormap, depth_frame #depth_image #Need to export depth_frame too. 
+            
+        else:
+            return self.svar, self.scolor_image, self.sdepth_colormap, self.sdepth_frame
         
-        if not depth_frame or not color_frame: #setting this to depth_colormap throws errors...
-            return False, None, None, None
-        return True, color_image, depth_colormap, depth_frame #depth_image #Need to export depth_frame too. 
+        #return self.svar, self.scolor_image, self.sdepth_colormap, self.sdepth_frame
+    
+    def saveFrames(self, var, color_image, depth_colormap, depth_frame):
+        self.svar = var
+        self.scolor_image = color_image
+        self.sdepth_colormap = depth_colormap
+        self.sdepth_frame = depth_frame
+
+    def returnSavedFrame(self):
+        time.sleep(0.03) #This has to be included otherwise it just spams frames and freezes out. 
+        #print("Returning saved frame...")
+        return self.svar, self.scolor_image, self.sdepth_colormap, self.sdepth_frame #self.sdepth_colormap
+
 
     #I don't think this is valid, pipeline is declared in init, so it's not global. 
     def stopPipeline(self):
@@ -133,6 +196,25 @@ class DepthCamera:
         self.pipelineStarted = False
         self.recordingPipelineStarted = False
         self.replayPipelineStarted = False
+        self.firstFrame = False
+
+    def pausePipeline(self):
+        #print("Actual pause called")
+        self.paused = True #Order may matter here, need to save frame before actually stopping the pipeline.
+        #self.playback.pause()
+        #self.paused = True
+    
+    def finalPause(self):
+        #print("actual final pause called")
+        self.paused = True
+        self.playback.pause()
+        
+
+    def playPipeline(self):
+        self.paused = False
+        self.playback.resume()
+        #self.paused = False
+        
 
 #This is the class that allows us to create a thread specifically to run the video feed so that the QT
 #program can still do other functional things. 
@@ -156,12 +238,19 @@ class VideoThread(QThread):
     def run(self):
         # Get the actual images from the camera to then be processed below
         while self._run_flag:
-            ret, cv_img, dv_img, depth_data = self.dc.get_frame()
+            
+            if(self.dc.paused):
+                print("Refreshing via saved data")
+                ret, cv_img, dv_img, depth_data = self.dc.returnSavedFrame()
+            
+            else: ret, cv_img, dv_img, depth_data = self.dc.get_frame()
+            
             if ret:
-                self.change_pixmap_signal.emit(cv_img)
-                self.change_pixmap_signal2.emit(dv_img)
-                self.change_depth_signal.emit(depth_data)
-                self.depth_frame_holder = depth_data
+                    self.change_pixmap_signal.emit(cv_img)
+                    self.change_pixmap_signal2.emit(dv_img)
+                    self.change_depth_signal.emit(depth_data)
+                    self.depth_frame_holder = depth_data
+
         # shut down capture system
         #cap.release()
 
@@ -177,9 +266,23 @@ class VideoThread(QThread):
         self.wait()
         self.quit()
 
+    def pause(self):
+        #print("one of first two pause's called ex")
+        self.dc.pausePipeline()
+        print(self.dc.paused)
+
+    def finalPause(self):
+        #print("Final pause called ex")
+        self.dc.finalPause()        
+
+    def play(self):
+        print("Play called")
+        self.dc.playPipeline()
+
 #Class used sheerly to move a variable from one class to the other. I suspect this is very bad practice. 
 class FileName:
     fName = "test"#/home/susanna/Documents/realsense_435i_camera_gui/BagFileTest.bag" #The issue is probably getting from the original location to the code base location.
+    videoLength = 0
 
 #This is the class that is actually connecting to the GUI and adding functionality
 class App(QtWidgets.QMainWindow, Ui_MainWindow):
@@ -207,7 +310,14 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.ExpandRadius.setIcon(QIcon("Icons/ExpandArrow.png"))
         self.LiveVideoExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
         self.SavedDataExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
-        self.DataSaveExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+        self.SavePicExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+        self.DatasetExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+        self.Pause.setIcon(QIcon("Icons/Pause.png"))
+        self.Play.setIcon(QIcon("Icons/Play.png"))
+
+        #self.ColorOverlay.setWindowTitle("Test Run")
+        #self.ColorOverlay.setWindowOpacity(0.5)
+        #self.DepthOverlay.setWindowOpacity(0)
 
         self.ExpandPoint.clicked.connect(lambda state: self.expandPointButton())
         self.ExpandLine.clicked.connect(lambda state: self.expandLineButton())
@@ -216,7 +326,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.LiveVideoExpand.clicked.connect(lambda state: self.expandLiveVideo())
         self.SavedDataExpand.clicked.connect(lambda state: self.expandSavedData())
-        self.DataSaveExpand.clicked.connect(lambda state: self.expandDataSave())
+        self.SavePicExpand.clicked.connect(lambda state: self.expandPicSave())
+        self.DatasetExpand.clicked.connect(lambda state: self.expandDataSave())
 
         self.PointSelect.clicked.connect(lambda state: self.enterPoint())
         self.CalculatePointDistance.clicked.connect(lambda state: self.calculatePointDepth())
@@ -233,7 +344,12 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.DepthVideo.mousePressEvent = self.getPosition
 
         self.LoadDataButton.clicked.connect(lambda state: self.loadDataset())
-        self.SaveDatasetButton.clicked.connect(lambda state: self.saveDataset())
+        #self.SaveDatasetButton.clicked.connect(lambda state: self.saveDataset()) #Need to update this function...
+        self.StartRecording.clicked.connect(lambda state: self.saveDataset()) 
+        self.StopRecording.clicked.connect(lambda state: self.stopSaveDataset())
+
+        self.Play.clicked.connect(lambda state: self.playDataset())
+        self.Pause.clicked.connect(lambda state: self.pauseDataset())
 
         #if(time.time() - self.start > 5): self.colorCloseEvent()
 
@@ -353,11 +469,14 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.VideoControlsFrame.setMaximumSize(QtCore.QSize(603, 170))
             self.LiveVideoExpand.setIcon(QIcon("Icons/CollapseArrow.png"))
             self.SavedDataExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
-            self.DataSaveExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.SavePicExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.DatasetExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
             self.SavedDataFrame.setMinimumSize(QtCore.QSize(603, 44))
             self.SavedDataFrame.setMaximumSize(QtCore.QSize(603, 44))
-            self.DataSaveFrame.setMinimumSize(QtCore.QSize(603, 44))
-            self.DataSaveFrame.setMaximumSize(QtCore.QSize(603, 44))
+            self.SavePicFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.SavePicFrame.setMaximumSize(QtCore.QSize(603, 44))
+            self.SaveDatasetFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.SaveDatasetFrame.setMaximumSize(QtCore.QSize(603, 44))
 
 
     def expandSavedData(self):
@@ -367,33 +486,59 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             self.SavedDataFrame.setMaximumSize(QtCore.QSize(603, 44))
 
         else:
-            self.SavedDataFrame.setMinimumSize(QtCore.QSize(603, 170))
-            self.SavedDataFrame.setMaximumSize(QtCore.QSize(603, 170))
+            self.SavedDataFrame.setMinimumSize(QtCore.QSize(603, 200))
+            self.SavedDataFrame.setMaximumSize(QtCore.QSize(603, 200))
             self.SavedDataExpand.setIcon(QIcon("Icons/CollapseArrow.png"))
             self.LiveVideoExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
-            self.DataSaveExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.SavePicExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.DatasetExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
             self.VideoControlsFrame.setMinimumSize(QtCore.QSize(603, 44))
             self.VideoControlsFrame.setMaximumSize(QtCore.QSize(603, 44))
-            self.DataSaveFrame.setMinimumSize(QtCore.QSize(603, 44))
-            self.DataSaveFrame.setMaximumSize(QtCore.QSize(603, 44))
+            self.SavePicFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.SavePicFrame.setMaximumSize(QtCore.QSize(603, 44))
+            self.SaveDatasetFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.SaveDatasetFrame.setMaximumSize(QtCore.QSize(603, 44))
 
  
-    def expandDataSave(self):
-        if(self.DataSaveFrame.height() >= 200):
-            self.DataSaveExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
-            self.DataSaveFrame.setMinimumSize(QtCore.QSize(603, 44))
-            self.DataSaveFrame.setMaximumSize(QtCore.QSize(603, 44))
+    def expandPicSave(self):
+        if(self.SavePicFrame.height() >= 200):
+            self.SavePicExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.SavePicFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.SavePicFrame.setMaximumSize(QtCore.QSize(603, 44))
 
         else:
-            self.DataSaveFrame.setMinimumSize(QtCore.QSize(603, 200))
-            self.DataSaveFrame.setMaximumSize(QtCore.QSize(603, 200))
-            self.DataSaveExpand.setIcon(QIcon("Icons/CollapseArrow.png"))
+            self.SavePicFrame.setMinimumSize(QtCore.QSize(603, 200))
+            self.SavePicFrame.setMaximumSize(QtCore.QSize(603, 200))
+            self.SavePicExpand.setIcon(QIcon("Icons/CollapseArrow.png"))
             self.SavedDataExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
             self.LiveVideoExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.DatasetExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
             self.SavedDataFrame.setMinimumSize(QtCore.QSize(603, 44))
             self.SavedDataFrame.setMaximumSize(QtCore.QSize(603, 44))
             self.VideoControlsFrame.setMinimumSize(QtCore.QSize(603, 44))
             self.VideoControlsFrame.setMaximumSize(QtCore.QSize(603, 44))
+            self.SaveDatasetFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.SaveDatasetFrame.setMaximumSize(QtCore.QSize(603, 44))
+
+    def expandDataSave(self):
+        if(self.SaveDatasetFrame.height() >= 200):
+            self.DatasetExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.SaveDatasetFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.SaveDatasetFrame.setMaximumSize(QtCore.QSize(603, 44))
+
+        else:
+            self.SaveDatasetFrame.setMinimumSize(QtCore.QSize(603, 200))
+            self.SaveDatasetFrame.setMaximumSize(QtCore.QSize(603, 200))
+            self.DatasetExpand.setIcon(QIcon("Icons/CollapseArrow.png"))
+            self.SavedDataExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.LiveVideoExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.SavePicExpand.setIcon(QIcon("Icons/ExpandArrow.png"))
+            self.SavedDataFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.SavedDataFrame.setMaximumSize(QtCore.QSize(603, 44))
+            self.VideoControlsFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.VideoControlsFrame.setMaximumSize(QtCore.QSize(603, 44))
+            self.SavePicFrame.setMinimumSize(QtCore.QSize(603, 44))
+            self.SavePicFrame.setMaximumSize(QtCore.QSize(603, 44))
         
     #Variables to make sure all threads are terminated at end of program run. 
     #T1 = False #T1/thread1 = color video thread
@@ -487,8 +632,27 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.depthDataStart("replay") #Start the data thread too. 
         self.replayPipelineRunning = True
 
+    #Functionallity for the play and pause buttons
+    def pauseDataset(self):
+        self.thread1.pause()
+        self.thread2.pause()
+        self.thread3.pause()
+        
+        #time.sleep(100) #Try adding in a delay. Delay doesn't seem to be necessary
+        self.thread1.finalPause()
+        self.thread2.finalPause()
+        self.thread3.finalPause()
+        print("Done calling pauses")
 
-    def saveDataset(self): #Need to figure out a good naming convention for this though. 
+    def playDataset(self):
+        self.thread1.play()
+        self.thread2.play()
+        self.thread3.play()
+
+    recordingStart = 0 #Variable timing how long the recording is getting
+    recording = False
+
+    def saveDataset(self): 
 
         if(self.colorPipelineRunning or self.replayPipelineRunning): self.colorCloseEvent() #Stop all previously running threads/pipeline so the data save pipeline can be opened. 
 
@@ -505,14 +669,42 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.depthDataStart("record") #Start the data thread too. 
         self.recordingPipelineRunning = True
-        self.start = time.time()
-        self.timer.singleShot(5000, self.colorCloseEvent) #Can't include paranthesis, it really screws things up.
+        self.recordingStart = time.time() #Should get current time
+        self.timer.singleShot(1000, self.updateRecordTime)
+        #This allows the recording to be stopped after a certain length of time. TIME LIMIT = 5 minutes.  
+        #TODO: This is going to really mess with things if it's already been stopped. 
+        #self.start = time.time()
+        #self.timer.singleShot(300000, self.colorCloseEvent) #Can't include paranthesis, it really screws things up.
+
+    def updateRecordTime(self):
+        tLength = int(time.time() - self.recordingStart)
+        hours = str(int(tLength / 3600))
+        minutes = str(int((tLength % 3600)/60))
+        seconds = str(tLength % 60)
+        if(len(hours) < 2) : hours = '0'+ hours
+        if(len(minutes) < 2): minutes = '0'+ minutes
+        if(len(seconds) < 2): seconds = '0'+ seconds
+        
+        #print(tLength)
+        t = hours + ':' + minutes + ':' + seconds
+        self.RecordingLength.setText(t)
+
+        if(self.recordingPipelineRunning): #If we're still recording, keep updating the time. 
+            self.timer = QtCore.QTimer(self)
+            self.timer.setSingleShot(True)
+            self.timer.singleShot(1000, self.updateRecordTime) 
+        
+
+    def stopSaveDataset(self):
+        self.colorCloseEvent() #Stop the pipeline
+        self.updateRecordTime() #Stop the timer
 
     #Bools for getting and displaying point depth
     pointDepth = 0.00 #Varable for point depth. 
     gPointX = 0
     gPointY = 0
     showPoint = False #Show dot on depth video
+    noTwoSinglePoints = False #Show only one dot on video feeds. Sigh. No, this shouldn't be needed. 
     showPointDistance = False #Bool for updating PointDistance display
 
     #Bools for getting and displaying line distances. 
@@ -584,10 +776,8 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.lPointY1 = int(self.LineY1.toPlainText())
         self.lPointY2 = int(self.LineY2.toPlainText())
         
-        if(self.replayPipelineRunning): test = VideoThread("replay")
-        else: test = VideoThread("live") #TODO: This may be an issue if I'm trying to take data from a recorded .bag
         #depth_scale = test.dc.depth_scale #The depth scale is fixed at 0.001 plus a tiny bit for the 400 series camera. 
-        color_intrin = test.dc.color_intrin
+        color_intrin = self.thread2.dc.color_intrin
         Z1 = rs.rs2_deproject_pixel_to_point(color_intrin, [self.lPointX1, self.lPointY1], self.lPointDepth1)
         Z2 = rs.rs2_deproject_pixel_to_point(color_intrin, [self.lPointX2, self.lPointY2], self.lPointDepth2)
 
@@ -719,6 +909,7 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
             circleImg = cv2.line(circleImg, A, B, (0,0,0), 4)
             circleImg = cv2.line(circleImg, A, B, (255,255,255), 1)
 
+        #print("The value of show point is: " + str(self.showPoint))
         qt_img = self.convert_cv_qt(circleImg)
         self.ColorVideo.setPixmap(qt_img) #self.image_label.setPixmap(qt_img)
 
