@@ -2,25 +2,14 @@
 #The actual GUI is the GUI.py file
 
 #Functions:
-#GUI that connects to the designer file. 
-#Buttons for starting and stopping color and video depth streams, as well as taking pictures of either. 
-#Drop down menu options with icons that work to display things. (Yay!!!!) A bit jenky, but works, unless we 
-#   change any sizing ratios, then we are going to have some issues. 
-#The depth_frame.getDistance(x,y) has been checked to be fairly accurate on center (320, 240). (within 2 inches)
-#The single point distance menu is now fully working, although points aside from the center may not be accurate.
-# You can click on a point in either color or depth video feeds to get the coordinates for distance calculations.  
-# The line distance menu is complete. You can click or type in points, edit them afterwards typed, draw line, and
-#  get the distance between the two points. I think the distance is decently accurate too, the depth feed isn't
-#  perfect and shadows can wreak havoc (Points in shadows become (null, null) which kills distance calculations.) 
-#You can record a .bag file (the length is currently set only in the code)
-#You can then load a .bag file from the GUI and it will play on a loop. You can also take measurements from it, although
-#  right now everything is moving, so I really need a pause function for this to be truly useful. 
+#Live data (color video and depth video) can be streamed on the GUI
+#Pictures (.jpg) can be saved from either video feed
+#Datasets (.bag files) can be saved from live video and then replayed to take measurements
+#Depth or distance measurements can be taken both in real time and from a recorded video
 
 
 #Issues:
-#Right now some of this is static and not variable, for the sake of getting results. Should fix later though. 
-#This main file should definitely get broken up into a few smaller files
-#Right now the recorded video just plays in an endless loop, I need a pause button, and a fastforward or reverse would be realy nice. 
+#This main file should definitely get broken up into a few smaller files (Or probably just reworked to try to kill bugs)
 #Right now you can only load .bag files stored in the program folder, I'm not sure why. 
 #When you pause a video, take a measurement, and then hit clear, it still displays the circles/lines on the screen. 
 #Pause is kind of working, but it's still a little weird. I had to add in a delay between sending back the saved frame,
@@ -34,14 +23,15 @@
 #  the depth feed is actually seeing it it's actually almost dead on. Within 2cm, and that's with me trying to be conservative on clicking. 
 #Rework the video and depth feeds to have a single overlay instead of manually applying it both times. Will require reworking code
 # as well as reworking the GUI layout. (PyQt5 doesn't like overlays) 
-#Add in pause and play buttons, fast forward and rewind would be nice.  
+#Fastforward and rewind buttons for video playback could be nice. Also making the slider work.   
 
 #Future Features
-#1. Fix the clear issue for taking measurements on paused videos
+#1. Fix the clear screen issue for taking measurements on paused videos
 #2. Allow the user to pick what the saved dataset is named
 #3. Fix the loading dataset issue from any folder other than the programs current one
 #4. A 1 minute .bag file is 2.9GB long. Holy cow. That's not sustanable. 
-#5. Stopping recording is throwing a pipeline error, same as when pausing, frame requests are getting sent after pipeline closed.  
+#5. Stopping recording is throwing a pipeline error, same as when pausing, frame requests are getting sent after pipeline closed. 
+#6. The slider doesn't work atm. 
 
 from PyQt5 import QtGui
 from PyQt5.QtGui import QPixmap, QIcon, QCursor, QPainter, QPen
@@ -119,6 +109,7 @@ class DepthCamera:
         self.playback = profile.get_device().as_playback()
         self.playback.pause()
         FileName.videoLength = self.playback.get_duration() #This gets the length of the .bag in seconds. 
+        print(FileName.videoLength)
         #print(str(t.seconds))
         self.playback.resume()
         #self.playback.set_real_time(False) #This makes it play back at a fast speed. 
@@ -632,6 +623,11 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
         self.depthDataStart("replay") #Start the data thread too. 
         self.replayPipelineRunning = True
 
+        #Feature to be added eventually, not worth it right now. 
+        #self.T2 = QtCore.QTimer(self)
+        #self.T2.setSingleShot(True)
+        #self.T2.singleShot(1000, self.updateSlider)
+
     #Functionallity for the play and pause buttons
     def pauseDataset(self):
         self.thread1.pause()
@@ -698,6 +694,25 @@ class App(QtWidgets.QMainWindow, Ui_MainWindow):
     def stopSaveDataset(self):
         self.colorCloseEvent() #Stop the pipeline
         self.updateRecordTime() #Stop the timer
+
+    #Not being used right now, this takes more fiddling than it's worth at the moment. 
+    length = FileName.videoLength
+    i = 0
+    def updateSlider(self):
+        if(self.replayPipelineRunning):
+            print(self.length)
+            if (self.i == self.length) : self.i = 0
+            print(self.i)
+            self.slider.sliderPosition = self.i
+            self.slider.update()
+            self.i = self.i + 1
+
+            self.T2 = QtCore.QTimer(self)
+            self.T2.setSingleShot(True)
+            self.T2.singleShot(1000, self.updateSlider)
+
+
+
 
     #Bools for getting and displaying point depth
     pointDepth = 0.00 #Varable for point depth. 
